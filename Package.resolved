@@ -1,0 +1,41 @@
+{
+  "pins" : [
+    {
+      "identity" : "chalk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/mxcl/Chalk",
+      "state" : {
+        "branch" : "master",
+        "revision" : "a7f58e47a08ca5a84f73acc4bcf6c2c19d990609"
+      }
+    },
+    {
+      "identity" : "swift-atomics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-atomics",
+      "state" : {
+        "branch" : "main",
+        "revision" : "ff3d2212b6b093db7f177d0855adbc4ef9c5f036"
+      }
+    },
+    {
+      "identity" : "swift-collections",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-collections",
+      "state" : {
+        "branch" : "main",
+        "revision" : "53a8adc54374f620002a3b6401d39e0feb3c57ae"
+      }
+    },
+    {
+      "identity" : "swift-numerics",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/apple/swift-numerics",
+      "state" : {
+        "branch" : "main",
+        "revision" : "97c716ba37f8c79ed5ae20f9fd3c378360bd3cce"
+      }
+    }
+  ],
+  "version" : 2
+}
