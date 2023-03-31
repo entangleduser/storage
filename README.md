@@ -5,7 +5,7 @@
  
  This is partially implemented and should be extended to every possible use case which is transparent reads and writes, querying, and creating content outside of the file manager used to publish content
  
-## Frameworks ↩︎
+## Frameworks ⏎
 ### Core
  Provides the protocol for default values and encoding and decoding values with a static encoder and decoder
  
@@ -17,7 +17,7 @@
 ### Reflection
  Allows setting and updating property wrappers on content (from the Tokamak framework)
 
-## Conventions ↩︎
+## Conventions ⏎
  There two primary conventions used in this framework, `Content` and `Structure`
  A structure is content that contains a file or value that can be encoded or decoded using an alias property wrapper
  
@@ -161,7 +161,7 @@ struct ContentView: View {
 }
 ```
 
-## Contributing ✔︎
+## Contributing ✓
  All feedback, criticism, improvements through pull request, and reported issues are helpful but the repository is mostly for evaluation purposes and those who want to understand recursive data language structures in swift
  
 ## Credits
