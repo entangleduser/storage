@@ -53,8 +53,7 @@
 
 ### Creating the content for a publisher
 ``` swift
-/// A struct that conforms to `PublicContent` so it can be wrapped using the `@Public` 
-property wrapper on a content publisher
+/// A struct that conforms to `PublicContent` so it can be wrapped using the `@Public` property wrapper on a content publisher
 struct Contents: PublicContent {
  /// A wrapped structure conforming to `Codable`, `AutoCodable`, or `SelfCodable`
  @Alias var script: String?
@@ -169,5 +168,5 @@ struct ContentView: View {
 - All open source code, including swift, the community and the SwiftUI library
 
 ## Limitations
-- macOS only but can easily be extended to go cross platform because of the compatibility of the data structures of used
+- macOS only but can easily be extended to go cross platform because of the compatibility of the data structures used
 - Transactions and querying aren’t _yet_ supported through inline functions
