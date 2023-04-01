@@ -10,6 +10,15 @@
       }
     },
     {
+      "identity" : "core",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/neutralradiance/core",
+      "state" : {
+        "branch" : "main",
+        "revision" : "11a425c0fd78ff367b332cb001e3f6f8e844223f"
+      }
+    },
+    {
       "identity" : "swift-atomics",
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-atomics",

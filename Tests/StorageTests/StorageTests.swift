@@ -49,7 +49,7 @@ struct Contents: PublicContent {
   /// this is normally done when a state variable changes, but a binding is
   /// acceptable to allow the intrinsic structure to be modified after updating
   /// and notifying the publisher assigned to the reflection
-  /// alias update the structure but since it's ideal to separate isolated
+  /// aliases update the structure but since it's ideal to separate isolated
   /// content structures from views, state variables don't udpate content on
   /// demand, but using another property wrapper for content is possible
   /// transactions work through aliases with
