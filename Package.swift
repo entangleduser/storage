@@ -6,6 +6,7 @@ let package = Package(
  platforms: [.macOS(.v12)],
  products: [.library(name: "Storage", targets: ["Storage"])],
  dependencies: [
+  //.package(path: "../Core"),
   .package(url: "https://github.com/neutralradiance/core", branch: "main"),
   .package(url: "https://github.com/mxcl/Chalk", branch: "master")
  ],

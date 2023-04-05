@@ -15,7 +15,7 @@
       "location" : "https://github.com/neutralradiance/core",
       "state" : {
         "branch" : "main",
-        "revision" : "11a425c0fd78ff367b332cb001e3f6f8e844223f"
+        "revision" : "965b27519a940e329b875338b890653dd48c2691"
       }
     },
     {
@@ -23,8 +23,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-atomics",
       "state" : {
-        "branch" : "main",
-        "revision" : "ff3d2212b6b093db7f177d0855adbc4ef9c5f036"
+        "revision" : "6c89474e62719ddcc1e9614989fff2f68208fe10",
+        "version" : "1.1.0"
       }
     },
     {

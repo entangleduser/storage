@@ -101,7 +101,7 @@ struct Contents: PublicContent {
 import SwiftUI
 // MARK: ContentApp - A test app for creating observable content
 struct ContentApp: App {
- @ObservableContent var content: ContentManager = .standard
+ @ObservableContent var content: ContentManager
  var body: some Scene {
   WindowGroup("Contents") {
    ContentView().environmentObject(content)
@@ -109,6 +109,7 @@ struct ContentApp: App {
   }
  }
 }
+
 
 struct ContentView: View {
  @EnvironmentObject var content: ContentManager

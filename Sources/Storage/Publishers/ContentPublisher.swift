@@ -2,8 +2,11 @@ import Foundation
 @testable import Extensions
 @testable import Composite
 import Chalk
-protocol ContentPublisher: FileObserver, Identifiable, ObservableObject
+protocol StaticPublisher: ObservableObject
 where Self.ObjectWillChangePublisher == ObservableObjectPublisher {
+ static var standard: Self { get }
+}
+protocol ContentPublisher: FileObserver, Identifiable, StaticPublisher {
  typealias SearchPath = ContentSearchPath
  typealias DomainMask = ContentDomainMask
  static var searchPath: SearchPath { get }
@@ -231,4 +234,10 @@ struct ContentDomainMask: OptionSet, @unchecked Sendable {
  static let all: Self = [.install, .system, .network, .user]
 
  public init(rawValue: UInt) { self.rawValue = rawValue }
+}
+
+// MARK: Defaults
+final class DefaultPublisher: FileObserver, ContentPublisher {
+ static let standard = DefaultPublisher()
+ static let searchPath: SearchPath = .cache
 }

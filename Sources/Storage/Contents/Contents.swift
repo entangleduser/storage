@@ -1,5 +1,8 @@
 @_exported @testable import Core
-@resultBuilder struct Contents {}
+@_exported @testable import Composite
+@resultBuilder struct Contents: Builder {
+ typealias Expression = AnyContent
+}
 
 extension Contents {
  @discardableResult
@@ -15,7 +18,7 @@ extension Contents {
   return (contents() as? [AnyContent])?.first as? A ?? .defaultValue
  }
 
- static func ignored(_ closure: () -> some Content) -> [AnyContent] {
+ static func ignored(_ closure: () -> some Content) -> FinalResult {
   defer { _ignore = false }
   _ignore = true
   let content = closure()
@@ -35,8 +38,8 @@ extension Contents {
   _ignore = true
   return (closure(element) as! [AnyContent]).first! as AnyContent
  }
-
- static func buildBlock(_ contents: AnyContent...) -> some Content {
+ 
+ static func buildBlock(_ contents: AnyContent...) -> FinalResult {
   let array = contents.compactMap {
    let unwrapped = $0.unwrapped
    return unwrapped is EmptyContent ? nil : unwrapped
@@ -50,7 +53,9 @@ extension Contents {
   }
  }
 
- static func buildBlock(_ content: some Content) -> some Content { buildBlock(content) }
+ static func buildBlock(_ content: some Content) -> some Content {
+  buildBlock(content)
+ }
 
  static func buildEither<A: Content, B: Content>(
   first: A

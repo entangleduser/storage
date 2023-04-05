@@ -17,7 +17,7 @@
 }
 
 @propertyWrapper
-struct ObservableContent<Publisher: ContentPublisher> {
+struct ObservableContent<Publisher: ContentPublisher>: DynamicProperty {
  @dynamicMemberLookup
  public struct Wrapper {
   let publisher: Publisher
@@ -33,11 +33,12 @@ struct ObservableContent<Publisher: ContentPublisher> {
 
  public var wrappedValue: Publisher { projectedValue.publisher }
 
- public init(wrappedValue: Publisher) {
+ public init(wrappedValue: Publisher = .standard) {
   self.projectedValue = Wrapper(publisher: wrappedValue)
  }
 
  public let projectedValue: Wrapper
+ public func update() { wrappedValue.objectWillChange.send() }
 }
 
 extension ContentPublisher {
