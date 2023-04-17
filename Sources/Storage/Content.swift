@@ -1,67 +1,28 @@
-@_exported @testable import Core
+import Core
 import Reflection
-protocol Content: ReflectedContent, CustomStringConvertible {
+@_typeEraser(AnyContent)
+public protocol Content: ReflectedContent, CustomStringConvertible {
  associatedtype Contents: Content
  @Storage.Contents var content: Contents { get }
+ var _traits: Traits { get set }
 }
 
-extension Mirror.Children: CustomStringConvertible {
- public var description: String {
-  map { label, value in
-   "\(label == nil ? "_" : "var \(label!)"): \(type(of: value)) = \(value)"
-  }
-  .joined(separator: "\n")
- }
-}
-
-func recursiveMirror(_ value: Any, perform: @escaping (Mirror) -> Void) {
- let mirror = Mirror(reflecting: value)
- perform(mirror)
- mirror.children.forEach { _, value in
-  recursiveMirror(value, perform: perform)
- }
-}
-
-func recursiveView(for value: Any) -> String {
- let mirror = Mirror(reflecting: value)
- return
-  """
-  \(mirror.subjectType)
-  \(mirror.children.description)
-  """
-}
-
-extension Content {
- public var description: String { "\(Self.self)" }
-}
-
-/// `Content` that doesn't get rendered
-struct EmptyContent: Content {}
-
-protocol WrappedContent: Content {
- var wrappedContent: AnyContent { get }
-}
-
-typealias AnyWrappedContent = any WrappedContent
-extension Content {
- var unwrapped: AnyContent {
-  if let self = self as? AnyWrappedContent {
-   return self.wrappedContent
-  } else {
-   return self
+public extension Content {
+ var description: String { "\(Self.self)" }
+ @_disfavoredOverload
+ var _traits: Traits {
+  get { _reflection?.traits ?? .defaultValue }
+  nonmutating set {
+   _reflection?.traits = newValue
   }
  }
-}
 
-extension Content {
- var isArray: Bool { self is [AnyContent] }
-}
-
-extension Content {
- var isEmptyContent: Bool { self is EmptyContent }
- var hasContents: Bool {
-  !(Contents.self is Never.Type) &&
-   !(Contents.self is EmptyContent.Type)
+ func traits<Value>(
+  _ keyPath: WritableKeyPath<Traits, Value>, _ value: Value
+ ) -> Self {
+  var `self` = self
+  self._traits[keyPath: keyPath] = value
+  return self
  }
 }
 
@@ -69,3 +30,34 @@ extension Content {
  @inlinable var metadata: StructMetadata { StructMetadata(type: Self.self) }
  @inlinable var info: TypeInfo { metadata.toTypeInfo() }
 }
+
+#if DEBUG
+ extension Mirror.Children: CustomStringConvertible {
+  public var description: String {
+   map { label, value in
+    """
+    \(label == nil ? "_" :
+     "var \(label!)"): \(type(of: value)) = \(String(describing: value).readable)
+    """
+   }
+   .joined(separator: "\n")
+  }
+ }
+
+ func recursiveMirror(_ value: Any, perform: @escaping (Mirror) -> Void) {
+  let mirror = Mirror(reflecting: value)
+  perform(mirror)
+  mirror.children.forEach { _, value in
+   recursiveMirror(value, perform: perform)
+  }
+ }
+
+ func recursiveView(for value: Any) -> String {
+  let mirror = Mirror(reflecting: value)
+  return
+   """
+   \(mirror.subjectType)
+   \(mirror.children.description)
+   """
+ }
+#endif

@@ -1,4 +1,13 @@
 @_exported import Extensions
+@_exported import Configuration
+#if os(Linux)
+ @_exported import OpenCombine
+#else
+ @_exported import Combine
+#endif
+
+public var config: Configuration = .defaultValue
+@inline(__always) let log = config
 
 public enum Error: Swift.Error {
  case url(Swift.Error),

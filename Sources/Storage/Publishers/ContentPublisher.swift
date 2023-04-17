@@ -1,12 +1,42 @@
 import Foundation
-@testable import Extensions
-@testable import Composite
-import Chalk
-protocol StaticPublisher: ObservableObject
+import Extensions
+@_exported import struct Reflection.PropertyInfo
+
+// MARK: Types
+public enum ContentSearchPath: @unchecked Sendable {
+ case
+  cache,
+  application,
+  user,
+  desktop,
+  music,
+  downloads,
+  documents,
+  pictures,
+  movies,
+  trash,
+  custom(String)
+}
+
+public struct ContentDomainMask: OptionSet, @unchecked Sendable {
+ public let rawValue: UInt
+
+ public static let install = Self(rawValue: 1 << 0)
+ public static let system = Self(rawValue: 1 << 1)
+ public static let network = Self(rawValue: 1 << 2)
+ public static let user = Self(rawValue: 1 << 3)
+ public static let all: Self = [.install, .system, .network, .user]
+
+ public init(rawValue: UInt) { self.rawValue = rawValue }
+}
+
+// MARK: Protocols
+public protocol StaticPublisher: ObservableObject, Identifiable
 where Self.ObjectWillChangePublisher == ObservableObjectPublisher {
  static var standard: Self { get }
 }
-protocol ContentPublisher: FileObserver, Identifiable, StaticPublisher {
+
+public protocol ContentPublisher: ContentObserver, StaticPublisher {
  typealias SearchPath = ContentSearchPath
  typealias DomainMask = ContentDomainMask
  static var searchPath: SearchPath { get }
@@ -15,99 +45,9 @@ protocol ContentPublisher: FileObserver, Identifiable, StaticPublisher {
 }
 
 extension ContentPublisher {
- func mirror(_ contents: [AnyContent]) -> [AnyContent] {
-  defer { _ignore = false }
-  _ignore = true
-
-  let mirror = ContentMirror(contents)
-
-  self[mirror: mirror.keyType] = mirror
-  mirror.reset()
-
-  return [mirror.first]
- }
-
- subscript(mirror type: (some Content).Type) -> ContentMirror? {
-  get { _mirrors[id]?[ObjectIdentifier(type)] }
-  set { _mirrors[id, default: .empty][ObjectIdentifier(type)] = newValue }
- }
-
- subscript(mirror type: Any.Type) -> ContentMirror? {
-  get { _mirrors[id]?[ObjectIdentifier(type)] }
-  set { _mirrors[id, default: .empty][ObjectIdentifier(type)] = newValue }
- }
-
- @inlinable subscript<A: Content>(content type: A.Type) -> A? {
-  get { self[mirror: type]?.first as? A }
-  set { self[mirror: type]?.first = newValue }
- }
-
- var mirrorCount: Int {
-  _mirrors[id, default: .empty].count
- }
-
- var reflectionCount: Int {
-  _mirrors[id, default: .empty].values
-   .reduce(into: 0) { partialResult, next in
-    partialResult += _values[next.index]
-     .reduce(into: 0) { partialResult, next in
-      guard next._reflection != nil else { return }
-      partialResult += 1
-     }
-   }
- }
-
- var storage: [ObjectIdentifier: ContentMirror] {
-  _mirrors[id, default: .empty]
- }
-
- var mirrors: [ContentMirror] { storage.values.map { $0 } }
-
- func display() {
-  print(
-   "\(Self.self, color: .yellow, style: .bold) ↘︎",
-   " Path: " + (try! contentPath()),
-   " Mirrors: " + mirrorCount.description,
-   " Elements: " + _elements.count.description,
-   " Reflections: " + reflectionCount.description,
-   " LastOffset: " + _lastOffset.description,
-   separator: .newline,
-   terminator: "\n\n"
-  )
- }
-
- var url: URL { try! createContentURL() }
-
- static var domainMask: DomainMask { .all }
- @inlinable
- func contentURL() throws -> URL {
-  guard let searchPath, let domainMask, let id = id(for: searchPath) else {
-   fatalError("No id could be determined for \(Self.self)")
-  }
-  return try url(
-   for: searchPath,
-   in: domainMask, appropriateFor: nil,
-   create: true
-  )
-  .appendingPathComponent(id, isDirectory: true)
- }
-
- func contentPath() throws -> String { try contentURL().path }
- func createContentURL() throws -> URL {
-  var isDirectory: ObjCBool = false
-  let url = try contentURL()
-  if fileExists(atPath: url.path, isDirectory: &isDirectory) {
-   if isDirectory.boolValue {
-    return url
-   } else {
-    fatalError()
-   }
-  } else {
-   try createDirectory(atPath: url.path, withIntermediateDirectories: true)
-   return url
-  }
- }
-
+ @_disfavoredOverload
+ public static var standard: Self { Self() }
+ public static var domainMask: DomainMask { .all }
  var searchPath: SearchPathDirectory? {
   switch Self.searchPath {
   case .cache: return .cachesDirectory
@@ -137,29 +77,200 @@ extension ContentPublisher {
  func id(for searchPath: SearchPathDirectory) -> String? {
   switch searchPath {
   case .applicationSupportDirectory:
-   return Bundle.main.infoDictionary?[kCFBundleNameKey as String] as? String ??
-    Bundle.main.infoDictionary?[kCFBundleExecutableKey as String] as? String
+   return config.appName
   default: break
   }
-  return Bundle.main.bundleIdentifier ?? {
-   let info = ProcessInfo.processInfo
-   return info.fullUserName
-    .split(separator: .space).map { $0.lowercased() }
-    .joined(separator: .period)
-    .appending(.period + info.processName)
-  }()
+  return config.bundleName
  }
-
- var currentPath: String { currentDirectoryPath }
- var userPath: String { homeDirectoryForCurrentUser.path }
 }
 
-/// A base class that observes changes to a file
-// TODO: track the location of values that have no deterministic path
-class FileObserver: FileManager {
+extension ContentPublisher {
+ func contentURL() throws -> URL {
+  guard let searchPath, let domainMask, let id = id(for: searchPath) else {
+   fatalError("No id could be determined for \(Self.self)")
+  }
+  return try url(
+   for: searchPath,
+   in: domainMask, appropriateFor: nil,
+   create: true
+  )
+  .appendingPathComponent(id, isDirectory: true)
+ }
+
+ func contentPath() throws -> String { try contentURL().path }
+ func createContentURL() throws -> URL {
+  var isDirectory: ObjCBool = false
+  let url = try contentURL()
+  if fileExists(atPath: url.path, isDirectory: &isDirectory) {
+   if isDirectory.boolValue {
+    return url
+   } else {
+    fatalError()
+   }
+  } else {
+   try createDirectory(atPath: url.path, withIntermediateDirectories: true)
+   return url
+  }
+ }
+
+ var url: URL { try! createContentURL() }
+}
+
+public protocol ContentCache: AnyObject {
+ var ignore: Bool { get set }
+ var id: ObjectIdentifier { get }
+ var keyType: Any.Type! { get set }
+ var key: AnyHashable? { get set }
+ var cache: [AnyHashable: [AnyHashable: ContentMirror]] { get set }
+ var reflections: [[ReflectionIndex: Reflection]] { get set }
+ var properties: [[UUID: (PropertyInfo, ReflectionIndex)]] { get set }
+ var filters: [BloomFilter<String>] { get set }
+ var offset: Int { get set }
+ var values: [[SomeContent]] { get set }
+ var elements: [[ReflectionIndex]] { get set }
+}
+
+extension ContentCache {
+ var mirrors: [ContentMirror] { cache.values.map(\.values).flatMap { $0 } }
+ var mirrorCount: Int { mirrors.count }
+ var allValues: [SomeContent] { values.flatMap { $0 } }
+ var allReflections: [Reflection] { allValues.compactMap(\._reflection) }
+ var reflectionCount: Int { allReflections.count }
+ var uniqueReflectionCount: Int { allReflections.unique().count }
+
+ public func display() {
+  log(
+   "\(Self.self, color: .yellow, style: .bold) ↘︎",
+   " Mirrors: " + mirrorCount.description,
+   " Elements: " + elements.count.description,
+   " Reflections: " + reflectionCount.description +
+    ", Unique: " + uniqueReflectionCount.description,
+   " LastOffset: " + offset.description,
+   separator: .newline,
+   terminator: "\n\n"
+  )
+ }
+}
+
+extension ContentCache where Self: ContentPublisher {
+ public func display() {
+  log(
+   "\(Self.self, color: .yellow, style: .bold) ↘︎",
+   " Path: " + (try! contentPath()),
+   " Mirrors: " + mirrorCount.description,
+   " Elements: " + elements.flatMap { $0 }.count.description,
+   " Reflections: " + reflectionCount.description +
+    ", Unique: " + uniqueReflectionCount.description,
+   " LastOffset: " + offset.description,
+   separator: .newline,
+   terminator: "\n\n"
+  )
+ }
+
+ /// The default reflection function for a custom content type
+ @inline(__always) func cache(_ contents: [SomeContent]) -> SomeContent {
+  ignore = true
+
+  let keyType = self.keyType ?? type(of: contents.first!)
+  if let mirror = self[cached: key, for: keyType] { return mirror.first }
+
+  let mirror = ContentMirror(
+   publisher: self,
+   key: key,
+   keyType: keyType,
+   reflections: &reflections,
+   properties: &properties,
+   filters: &filters,
+   values: &values,
+   elements: &elements,
+   contents,
+   offset: &offset
+  )
+
+  self[cached: key, for: keyType] = mirror
+
+  return self[cached: key, for: keyType]!.values[mirror.index].first!
+ }
+
+ @inline(__always) func reflect<A: Content>(
+  with key: AnyHashable?, for keyType: Any.Type? = nil,
+  @Storage.Contents content: @escaping () -> A
+ ) -> Reflection {
+  ignore = true
+
+  let keyType = keyType ?? A.self
+  if let mirror = self[cached: key, for: keyType] {
+   return mirror.first._reflection.unsafelyUnwrapped
+  }
+
+  let mirror = ContentMirror(
+   publisher: self,
+   key: key,
+   keyType: keyType,
+   reflections: &reflections,
+   properties: &properties,
+   filters: &filters,
+   values: &values,
+   elements: &elements,
+   ignoreContent { content() as! [SomeContent] },
+   offset: &offset
+  )
+
+  self[cached: key, for: keyType] = mirror
+
+  return self[cached: key, for: keyType]!.first._reflection.unsafelyUnwrapped
+ }
+
+ @usableFromInline
+ subscript(cache key: AnyHashable? = nil) -> [AnyHashable: ContentMirror]? {
+  get { cache[key ?? AnyHashable(id)] }
+  set {
+   guard let newValue else { return }
+   cache[key ?? AnyHashable(id), default: .empty] = newValue
+  }
+ }
+
+ @usableFromInline subscript(
+  cached key: AnyHashable? = nil, for type: Any.Type
+ ) -> ContentMirror? {
+  get { self[cache: key ?? id.erasedToAny]?[ObjectIdentifier(type)] }
+  set {
+   guard let newValue else { return }
+   cache[
+    key ?? id.erasedToAny, default: .empty
+   ][ObjectIdentifier(type)] = newValue
+  }
+ }
+
+ @usableFromInline subscript<A: Content>(
+  content type: A.Type, for key: AnyHashable? = nil
+ ) -> A? {
+  get { self[cache: key ?? id.erasedToAny]?[ObjectIdentifier(type)]?.first as? A }
+  set {
+   guard let newValue else { return }
+   self[cache: key ?? id.erasedToAny]?[ObjectIdentifier(type)]?.first = newValue
+  }
+ }
+}
+
+// MARK: Objects
+/// A base class that observes changes to content
+open class ContentObserver: FileManager {
+ override public required init() { super.init() }
+ public var ignore = true
+ public var id: ObjectIdentifier { ObjectIdentifier(self) }
+ public var cache: [AnyHashable: [AnyHashable: ContentMirror]] = .empty
+ public var keyType: Any.Type!
+ public var key: AnyHashable?
+ public var reflections: [[ReflectionIndex: Reflection]] = .empty
+ public var properties: [[UUID: (PropertyInfo, ReflectionIndex)]] = .empty
+ public var filters: [Extensions.BloomFilter<String>] = .empty
+ public var offset: Int = .zero
+ public var values: [[SomeContent]] = .empty
+ public var elements: [[ReflectionIndex]] = .empty
+
  var paths = Set<String>()
  var sources = [String: DispatchSourceFileSystemObject]()
-
  private let dispatch = DispatchSource.self
  func observe(_ reflection: Reflection) {
   let path = reflection.directory.path
@@ -209,35 +320,16 @@ class FileObserver: FileManager {
  }
 }
 
-enum ContentSearchPath: @unchecked Sendable {
- case
-  cache,
-  application,
-  user,
-  desktop,
-  music,
-  downloads,
-  documents,
-  pictures,
-  movies,
-  trash,
-  custom(String)
-}
-
-struct ContentDomainMask: OptionSet, @unchecked Sendable {
- let rawValue: UInt
-
- static let install = Self(rawValue: 1 << 0)
- static let system = Self(rawValue: 1 << 1)
- static let network = Self(rawValue: 1 << 2)
- static let user = Self(rawValue: 1 << 3)
- static let all: Self = [.install, .system, .network, .user]
-
- public init(rawValue: UInt) { self.rawValue = rawValue }
-}
-
+public typealias ContentCacheable = ContentPublisher & ContentCache
+public typealias AnyContentPublisher = any ContentCacheable
+public typealias ObservableContentPublisher = ContentCacheable & ContentObserver
+public typealias ObservableDefaults = ObservableContentPublisher & DefaultsPublisher
 // MARK: Defaults
-final class DefaultPublisher: FileObserver, ContentPublisher {
- static let standard = DefaultPublisher()
- static let searchPath: SearchPath = .cache
+/// The default publisher, if there's an app delegate it would probably
+/// be beneficial to subclass this in order to allow view updates from
+/// content and defaults from anywhere the observed object is placed
+open class DefaultPublisher: ObservableDefaults {
+ // TODO: Add search path override to traits
+ public static var searchPath: SearchPath = .cache
+ //public static var standard: Self { Self() }
 }

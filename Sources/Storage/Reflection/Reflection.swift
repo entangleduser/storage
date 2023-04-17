@@ -1,47 +1,54 @@
-@_exported @testable import Composite
-@_exported @testable import Extensions
-@_exported @testable import Core
-import System
+import Composite
+import Extensions
+import Core
+import struct System.FilePermissions
 
-final class Reflection: IndexedPropertyCache, Identifiable, Equatable {
+public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
+ public static func == (lhs: Reflection, rhs: Reflection) -> Bool {
+  lhs.id == rhs.id
+ }
+
  required init(
   _ publisher: AnyContentPublisher?,
+  key: AnyHashable?,
   keyType: Any.Type,
   subjectType: Any.Type,
   index: ReflectionIndex
  ) {
+  self.key = key
   self.publisher = publisher
   self.keyType = keyType
   self.subjectType = subjectType
   self.index = index
  }
 
+ var key: AnyHashable?
  let keyType: Any.Type
  var keyTypeID: ObjectIdentifier { ObjectIdentifier(keyType) }
  let subjectType: Any.Type
  var subjectTypeID: ObjectIdentifier { ObjectIdentifier(subjectType) }
- static func == (lhs: Reflection, rhs: Reflection) -> Bool { lhs.id == rhs.id }
 
  var mirror: ContentMirror? {
-  get { publisher[mirror: keyType] }
-  set { publisher[mirror: keyType] = newValue }
+  get { publisher[cached: key, for: keyType] }
+  set { publisher[cached: key, for: keyType] = newValue }
  }
 
  unowned var parent: Reflection?
  unowned var publisher: AnyContentPublisher!
+ public var index: ReflectionIndex
+ func updateIndex() { mirror.unsafelyUnwrapped.callAsFunction(index) }
 
- var index: ReflectionIndex
-
- var value: AnyContent {
+ var value: SomeContent {
   get { index.value }
   set { index.value = newValue }
  }
 
  var structure: (any EnclosedContent)?
+ var contents: [AnyHashable: any EnclosedContent] = .empty
  var onError: ((Error) -> Void)?
  var recoveryURL: URL?
 
- var isGroup: Bool { String.withName(for: subjectType) == "Group" }
+ // var isGroup: Bool { String.withName(for: subjectType) == "Group" }
 
  /// - note: contains a cache that stores values for non-mutating access
  var attributesCache =
@@ -53,6 +60,11 @@ final class Reflection: IndexedPropertyCache, Identifiable, Equatable {
  var usedAttributes: Set<String> = .empty
  var usedResources: Set<String> = .empty
  var usedTraits: Set<String> = .empty
+
+ func setValues() {
+  setResources()
+  setAttributes()
+ }
 
  var name: String? {
   didSet { updateName() }
@@ -101,31 +113,28 @@ final class Reflection: IndexedPropertyCache, Identifiable, Equatable {
  }
 
  /// The cache for non-mutating access to wrapped values
- var cache: [String: () -> Any] = .empty
+ public var cache: [String: () -> Any] = .empty
  /// Content types processed by this reflection
- var types: Set<String> = .empty
+ public var types: Set<String> = .empty
 
  deinit {
-  print(
+  log(
    """
    \(Self.self) was deallocated for \(subjectType)
    Publisher → \(publisher!)\nValue → \(index.value) with Index ⏎\n\(index)\n
-   """
+   """,
+   for: .reflection
   )
  }
 
- @discardableResult func updateMirror() -> Bool {
-  true
- }
-
- func setValues() {
-  setResources()
-  setAttributes()
- }
 
  func updateIfExisting() -> Bool {
-  defer { print(index, terminator: "\n\n") }
-  defer { publisher.objectWillChange.send() }
+  defer {
+   #if DEBUG
+    log(index, terminator: "\n\n", with: "index")
+   #endif
+   publisher.objectWillChange.send()
+  }
   if exists {
    if traits.isObservable {
     publisher.observe(self)
@@ -138,25 +147,20 @@ final class Reflection: IndexedPropertyCache, Identifiable, Equatable {
  }
 
  func update(_ mirror: ContentMirror) -> Bool {
-  //  _ignore = true
-  //  _publisher = publisher
-  //  _keyType = keyType
-  //  mirror.callAsFunction(index)
-  //  mirror.reset()
-  //  _ignore = false
-  displayResources()
-  displayAttributes()
-  displayTraits()
   return updateIfExisting()
  }
 
  @discardableResult func update() -> Bool {
-  if let mirror {
-   return update(mirror)
-  } else {
-   return updateIfExisting()
-  }
+  updateIfExisting()
  }
+ 
+ /// Useful when the dynamic content of a content structure is changed
+ /// - returns: true if the content exists on the filesystem
+ @discardableResult func updateMirror() -> Bool {
+  updateIndex()
+  return updateIfExisting()
+ }
+ 
 
  subscript<A: EnclosedContent>(_ structure: A) -> A.Value? {
   get {
@@ -235,7 +239,7 @@ extension Reflection {
  }
 
  func displayTraits() {
-  print(
+  log(
    "\("★", color: .cyan, style: .bold)",
    traits.description,
    terminator: "\n\n"
@@ -252,17 +256,30 @@ extension Reflection {
 
  var resourceValues: URLResourceValues? {
   get {
-   try? url.resourceValues(
-    forKeys: [
-     .isDirectoryKey,
-     .isHiddenKey,
-     .isExecutableKey,
-     .fileResourceTypeKey,
-     .contentTypeKey,
-     .localizedTypeDescriptionKey,
-     .tagNamesKey
-    ]
-   )
+   #if os(macOS)
+    try? url.resourceValues(
+     forKeys: [
+      .isDirectoryKey,
+      .isHiddenKey,
+      .isExecutableKey,
+      .fileResourceTypeKey,
+      .contentTypeKey,
+      .localizedTypeDescriptionKey,
+      .tagNamesKey
+     ]
+    )
+   #else
+    try? url.resourceValues(
+     forKeys: [
+      .isDirectoryKey,
+      .isHiddenKey,
+      .isExecutableKey,
+      .fileResourceTypeKey,
+      .contentTypeKey,
+      .localizedTypeDescriptionKey
+     ]
+    )
+   #endif
   }
   set {
    guard let newValue else { return }
@@ -324,9 +341,11 @@ extension Reflection {
   self[resource: .localizedTypeDescriptionKey] as? String
  }
 
- var tagNames: [String]? {
-  self[resource: .tagNamesKey] as? [String]
- }
+ #if os(macOS)
+  var tagNames: [String]? {
+   self[resource: .tagNamesKey] as? [String]
+  }
+ #endif
 
  func updateResources() {
   guard let values = resourceValues else { return }
@@ -336,7 +355,9 @@ extension Reflection {
   resources[any: URLFileResourceTypeKey()] = values.fileResourceType as Any
   resources[any: TypeIdentifierKey()] = values.contentType as Any
   resources[any: TypeDescriptionKey()] = values.localizedTypeDescription as Any
-  resources[any: TagNamesKey()] = values.tagNames as Any
+  #if os(macOS)
+   resources[any: TagNamesKey()] = values.tagNames as Any
+  #endif
  }
 
  func setResources() {
@@ -346,12 +367,10 @@ extension Reflection {
          let fileKey = urlResourceKey(for: keyDescription) else { continue }
    self[resource: fileKey] = value
   }
-
-  // displayResources()
  }
 
  func displayResources() {
-  print(
+  log(
    "\("⚑", color: .cyan, style: .bold)",
    resources.description,
    terminator: "\n\n"
@@ -366,7 +385,12 @@ extension Reflection {
   case URLFileResourceTypeKey.description: return .fileResourceTypeKey
   case TypeIdentifierKey.description: return .contentTypeKey
   case TypeDescriptionKey.description: return .localizedTypeDescriptionKey
-  case TagNamesKey.description: return .tagNamesKey
+  case TagNamesKey.description:
+   #if os(macOS)
+    return .tagNamesKey
+   #else
+    return nil
+   #endif
   default: return nil
   }
  }
@@ -375,9 +399,7 @@ extension Reflection {
   get { attributesCache.values.unsafelyUnwrapped }
   set {
    usedAttributes.formUnion(Set(newValue.values.keys))
-   // if update() {
    attributesCache.values = newValue
-   // }
   }
  }
 
@@ -421,12 +443,11 @@ extension Reflection {
          let fileKey = fileAttributeKey(for: keyDescription) else { continue }
    self[attribute: fileKey] = value
   }
-  path = _path
-  // displayAttributes()
+  updatePath()
  }
 
  func displayAttributes() {
-  print(
+  log(
    "\("✦", color: .cyan, style: .bold)",
    attributes.description,
    terminator: "\n\n"
@@ -444,7 +465,7 @@ extension Reflection {
  var modificationDate: Date? { self[attribute: .modificationDate] as? Date }
 
  func displayFileAttributes() {
-  print(
+  log(
    "\n⌘ \("FileAttributes", color: .green)",
    " Number: Int = " + String(describing: number.unwrapped),
    " ByteSize: Int = " + String(describing: size.unwrapped),
@@ -478,19 +499,29 @@ extension Reflection {
 // MARK: Filters
 extension Reflection {
  /// types that can be filtered for recursing the content structure
- static var types: Set<String> {
-  ["Folder", "ForEach", "CodableContentModifier", "BufferModifier"]
- }
+ public static let types: Set<String> = [
+  // MARK: Structural
+  "Folder",
+  "ForEach",
+  "Group",
+//  "Array",
+  // MARK: Structured
+  "Structure",
+  "NominalStructure",
+  // MARK: Modified Structures
+  "CodableContentModifier",
+  "BufferModifier"
+ ]
 
- static var properties: Set<String> { ["AttributeProperty"] }
- static var filterCount: Int { types.count + properties.count }
+ static var filterCount: Int { types.count }
 }
 
 // MARK: Properties
 extension Reflection {
  var directory: URL {
   do {
-   return parent == nil ? try publisher.contentURL() : parent!._url!
+   return parent == nil ?
+    try publisher.contentURL() : parent.unsafelyUnwrapped.url
   } catch {
    onError?(.url(error))
    fatalError()
@@ -509,7 +540,9 @@ extension Reflection {
    } else {
     try publisher
      .createDirectory(at: directory, withIntermediateDirectories: true)
-    // print("Created folder at \"\(directory.path)\"")
+    #if DEBUG
+     log("Created folder at \"\(directory.path)\"")
+    #endif
    }
   } catch {
    onError?(.url(error))
@@ -519,7 +552,8 @@ extension Reflection {
 
  @discardableResult func updatePath() -> String {
   var base = directory
-  guard let name = name?.wrapped else { return base.path }
+  guard
+   let name = attributes.name.wrapped ?? name?.wrapped else { return base.path }
   base.appendPathComponent(name)
   path = base.path
   return base.path
@@ -531,7 +565,10 @@ extension Reflection {
   }
  }
 
- var _url: URL? { URL(fileURLWithPath: _path) }
+ var _url: URL? {
+  guard let path else { return nil }
+  return URL(fileURLWithPath: path)
+ }
 
  func createDirectory() {
   guard let _url else { return }
@@ -545,7 +582,9 @@ extension Reflection {
     }
    } else {
     try publisher.createDirectory(at: _url, withIntermediateDirectories: true)
-    // print("Created folder at \"\(directory.path)\"")
+    #if DEBUG
+     log("Created folder at \"\(directory.path)\"")
+    #endif
    }
   } catch {
    onError?(.url(error))
@@ -586,7 +625,7 @@ extension Reflection {
 
  func create() {
   guard let structure else { fatalError() }
-  guard mirror == nil else { return }
+  // guard mirror == nil else { return }
   do {
    if !exists { try structure.create() }
   } catch let error as Error {
@@ -623,41 +662,37 @@ extension Reflection {
  }
 }
 
+// MARK: Transactional
+// Create a transaction closure for reflections
 extension Reflection {
- func set<A: ExpressibleByNilLiteral>(
-  _ newValue: A,
-  id: some LosslessStringConvertible
- ) {
-  // defer { name = nil }
+ func set<A>(_ newValue: A?, id: some LosslessStringConvertible) {
+  defer { name = nil }
   name = id.description
   resolveTraits()
   self[A.self] = newValue
  }
 
- func get<A: ExpressibleByNilLiteral>(
-  id: some LosslessStringConvertible, as type: A.Type
- ) -> A {
-  // defer { name = nil }
+ func getAll<Value>(as type: Value.Type) -> [Value] {
+  guard let utType = traits.utType,
+        let contents = try? publisher.contentsOfDirectory(
+         at: directory, includingPropertiesForKeys: [.contentTypeKey]
+        )
+  else { return .empty }
+
+  return contents.compactMap { url in
+   let `extension` = url.pathExtension
+   if utType.preferredFilenameExtension == `extension` {
+    let name = url.deletingPathExtension().lastPathComponent
+    return get(id: name, as: Value.self)
+   }
+   return nil
+  }
+ }
+
+ func get<A>(id: some LosslessStringConvertible, as type: A.Type) -> A? {
+  defer { name = nil }
   name = id.description
   resolveTraits()
-  return self[A.self] ?? nil
+  return self[A.self]
  }
 }
-
-// extension Reflection {
-// func set<A: ExpressibleByNilLiteral & Sequence>(
-//  _ newValue: A,
-//  id: some LosslessStringConvertible
-// ) {
-//   //defer { name = nil }
-//  self.name = id.description
-//  self[A.self] = newValue
-// }
-// func get<A: ExpressibleByNilLiteral & Sequence>(
-//  id: some LosslessStringConvertible, as type: A.Type
-// ) -> A {
-//   //defer { name = nil }
-//  self.name = id.description
-//  return self[A.self] ?? nil
-// }
-// }

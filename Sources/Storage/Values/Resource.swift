@@ -1,30 +1,30 @@
-@_exported @testable import Composite
-protocol ResourcesKey: ResolvedKey {}
+@_exported import Composite
+public protocol ResourcesKey: ResolvedKey {}
 
-struct DirectoryKey: ResourcesKey, IntBoolKey {}
+public struct DirectoryKey: ResourcesKey, IntBoolKey {}
 
-struct HiddenKey: ResourcesKey, IntBoolKey {}
+public struct HiddenKey: ResourcesKey, IntBoolKey {}
 
-struct ExecutableKey: ResourcesKey, IntBoolKey {}
+public struct ExecutableKey: ResourcesKey, IntBoolKey {}
 
-struct URLFileResourceTypeKey: ResourcesKey, OptionalKey {
- typealias Value = URLFileResourceType
+public struct URLFileResourceTypeKey: ResourcesKey, OptionalKey {
+ public typealias Value = URLFileResourceType
 }
 
 @_exported import UniformTypeIdentifiers
-struct TypeIdentifierKey: ResourcesKey, OptionalKey {
- typealias Value = UTType
+public struct TypeIdentifierKey: ResourcesKey, OptionalKey {
+ public typealias Value = UTType
 }
 
-struct TypeDescriptionKey: ResourcesKey, OptionalKey {
- typealias Value = String
+public struct TypeDescriptionKey: ResourcesKey, OptionalKey {
+ public typealias Value = String
 }
 
-struct TagNamesKey: ResourcesKey, OptionalKey {
- typealias Value = [String]
+public struct TagNamesKey: ResourcesKey, OptionalKey {
+ public typealias Value = [String]
 }
 
-extension Resources {
+public extension Resources {
  var isDirectory: Bool { self[DirectoryKey.self] }
  var isHidden: Bool {
   get { self[HiddenKey.self] }

@@ -1,8 +1,9 @@
-@_exported @testable import Composite
+@_exported import Composite
 /// The common attributes or file system metadata of a structure
-struct Resources: KeyValues {
- var values: [String: Any] = .empty
- static var defaultValues: OrderedDictionary<String, Any> {
+public struct Resources: KeyValues {
+ public init() {}
+ public var values: [String: Any] = .empty
+ public static var defaultValues: OrderedDictionary<String, Any> {
   [
    DirectoryKey.description: DirectoryKey.resolvedValue,
    HiddenKey.description: HiddenKey.resolvedValue,

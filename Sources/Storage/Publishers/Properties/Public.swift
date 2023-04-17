@@ -1,6 +1,6 @@
 @testable @_exported import Core
 @propertyWrapper struct PublicContentProperty
-<A: PublicContent, Publisher: ContentPublisher>: DynamicProperty {
+<A: PublicContent, Publisher: ContentPublisher & ContentCache>: DynamicProperty {
  var publisher: Publisher { .standard }
  var value: A? {
   get { publisher[content: A.self] }
@@ -12,12 +12,12 @@
   set { value = newValue }
  }
 
- func update() {}
+ func update() { publisher.objectWillChange.send() }
  init() {}
 }
 
 @propertyWrapper
-struct ObservableContent<Publisher: ContentPublisher>: DynamicProperty {
+public struct ObservableContent<Publisher: ContentPublisher>: DynamicProperty {
  @dynamicMemberLookup
  public struct Wrapper {
   let publisher: Publisher
@@ -41,42 +41,43 @@ struct ObservableContent<Publisher: ContentPublisher>: DynamicProperty {
  public func update() { wrappedValue.objectWillChange.send() }
 }
 
-extension ContentPublisher {
+extension ContentPublisher where Self: ContentCache {
  typealias Public<A> = PublicContentProperty<A, Self> where A: PublicContent
 }
 
 /// Content that can be set on a ``ContentPublisher``
-protocol PublicContent: DynamicContent, Infallible {
- func publish(_ publisher: some ContentPublisher) -> Self
+public protocol PublicContent: DynamicContent, Infallible {
  init()
 }
 
-extension PublicContent {
- var _traits: Traits? { get { nil } set {} }
- var _attributes: Attributes? { get { nil } set {} }
+public extension PublicContent {
+ static var defaultValue: Self { Self() }
  /// `PublicContent` must have an actor to process the entire structure
  /// and determine the domain for managing it's contents
- func publish(_ publisher: some ContentPublisher) -> Self {
-  Storage.Contents.mirroring(contents: { self }, for: publisher)
+ func publish(_ publisher: AnyContentPublisher) -> Self {
+  Storage.Contents.caching(for: publisher, contents: { self })
+   as? Self ?? .defaultValue
  }
-
- static var defaultValue: Self { Self() }
 }
 
-extension PublicContent {
+public extension PublicContent {
  @_disfavoredOverload
  unowned var _reflection: Reflection? {
   get {
    if let property = info.properties
-    .last(where: { $0.get(from: self) is any ReflectedContent }) {
-    return (property.get(from: self) as! any ReflectedContent)._reflection
+    .last(where: {
+     $0 is any ReflectedProperty && !($0 is any IdentifiableProperty)
+//     ["AttributeProperty"].contains(String.withName(for: $0.type))
+    }) {
+    return (property.get(from: self) as! any ReflectedProperty)._reflection
    } else {
     return nil
    }
   }
   nonmutating set {
-//   unowned var reflection = self._reflection
-//   reflection = newValue
+   var reflection = self._reflection
+   reflection = newValue
+   _ = reflection
   }
  }
 }

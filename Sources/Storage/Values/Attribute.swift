@@ -1,46 +1,47 @@
-@_exported @testable import Composite
-protocol AttributeKey: ResolvedKey {}
+@_exported import Composite
+public protocol AttributeKey: ResolvedKey {}
 
-struct PathKey: AttributeKey, OptionalKey {
- typealias Value = String
+public struct PathKey: AttributeKey, OptionalKey {
+ public typealias Value = String
 }
 
-struct NameKey: AttributeKey, DefaultKey {
- typealias Value = String
+public struct NameKey: AttributeKey, DefaultKey {
+ public typealias Value = String
 }
 
-struct ExtensionKey: AttributeKey, OptionalKey {
- typealias Value = String
+public struct ExtensionKey: AttributeKey, OptionalKey {
+ public typealias Value = String
 }
 
-struct FileNumberKey: AttributeKey, OptionalKey {
- typealias Value = Int
+public struct FileNumberKey: AttributeKey, OptionalKey {
+ public typealias Value = Int
 }
 
-struct FileSizeKey: AttributeKey, DefaultKey {
- static let defaultValue: Int = .zero
+public struct FileSizeKey: AttributeKey, DefaultKey {
+ public static let defaultValue: Int = .zero
 }
 
-struct ExtensionHiddenKey: AttributeKey, IntBoolKey {}
+public struct ExtensionHiddenKey: AttributeKey, IntBoolKey {}
 
-import System
-struct FilePermissionsKey: AttributeKey, ResolvedKey {
- static func resolveValue(_ value: CModeT?) -> FilePermissions {
+import struct System.FilePermissions
+import struct System.CModeT
+public struct FilePermissionsKey: AttributeKey, ResolvedKey {
+ public static func resolveValue(_ value: CModeT?) -> FilePermissions {
   guard let value else { return .empty }
   return FilePermissions(rawValue: value)
  }
 
- static func storeValue(_ value: FilePermissions?) -> CModeT? {
+ public static func storeValue(_ value: FilePermissions?) -> CModeT? {
   guard let value else { return nil }
   return value.rawValue
  }
 }
 
-struct DateCreatedKey: AttributeKey, DoubleDateKey {}
-struct DateModifiedKey: AttributeKey, DoubleDateKey {}
-struct DateAddedKey: AttributeKey, DoubleDateKey {}
+public struct DateCreatedKey: AttributeKey, DoubleDateKey {}
+public struct DateModifiedKey: AttributeKey, DoubleDateKey {}
+public struct DateAddedKey: AttributeKey, DoubleDateKey {}
 
-extension Attributes {
+public extension Attributes {
  var path: String? {
   get { self[PathKey.self] }
   set { self[PathKey.self] = newValue }

@@ -38,7 +38,7 @@
 ### Creating a content publisher
 ``` swift
 @testable import Storage /// - Note `@testable` required until the evaluation is over
-/// A main actor that conforms to `FileObserver` and `ContentPublisher`
+/// A main actor that inherits from `ContentObserver` and conforms to `ContentPublisher`
 @MainActor final class ContentManager: FileObserver, ContentPublisher {
 /// A standard static property must be declared to prevent more than one copy
  static let standard = ContentManager()
@@ -55,7 +55,7 @@
 ``` swift
 /// A struct that conforms to `PublicContent` so it can be wrapped using the `@Public` property wrapper on a content publisher
 struct Contents: PublicContent {
- /// A wrapped structure conforming to `Codable`, `AutoCodable`, or `SelfCodable`
+ /// A wrapped structure conforming to `Codable`, `AutoCodable`, or `StaticCodable`
  @Alias var script: String?
  @Alias var readme: String?
  @Alias var json: EmptyStructure?
@@ -65,12 +65,11 @@ struct Contents: PublicContent {
  var content: some Content {
   Folder("Cache") {
    /// A test swift script that can execute a swift script using `swift-sh`
-   (Nominal("test") ??
+   (Nominal("test", .swiftSource) ??
     // the default value can be indicated using the operator `??`
     // or else the value won't be created automatically
     "#!/usr/bin/swift sh\nlet str = \"Hello World!\"\nprint(str)")
     // the type / extension for a structure
-     .type(.swiftSource)
      .permissions(.ownerReadWriteExecute)
      .alias($script)
 
@@ -158,6 +157,11 @@ struct ContentView: View {
   }
  }
 }
+```
+
+## ~Transactions~
+### Creating subscribed content
+```swift
 ```
 
 ## Contributing ✓

@@ -1,98 +1,84 @@
-@_exported @testable import Core
-@_exported @testable import Composite
+import Core
+import Composite
 import Reflection
-// @_exported import OrderedCollections
-typealias ReflectionIndex = Graphex<[AnyContent]>
-extension Graphex: CustomStringConvertible where Base == [AnyContent] {
- public var description: String {
-  """
-  Self Index: \(value), \(position), \(offset),
-  Elements[\(elementRange)], Base[\(baseRange)]
-  Start Index: \(
-   start == self ? "Self" :
-    """
-    \(start.value), \(start.position), \(start.offset),
-    Elements[\(start.elementRange)], Base[\(start.baseRange)]
-    """
-  )
-  Previous Index: \(
-   previous == nil ? "None" :
-    "\(previous!.value), \(previous!.position), \(previous!.offset)"
-  )
-  Next Index: \(
-   next == nil ? "None" :
-    "\(next!.value), \(next!.position), \(next!.offset)"
-  )
-  """
- }
-}
 
-typealias AnyAttributeKey = any AttributeKey
-typealias AnyResourcesKey = any ResourcesKey
-
-extension [any ResolvedKey] {
- func contains(key: AnyResolvedKey) -> Bool {
-  contains(where: { $0.description == key.description })
- }
-
- mutating func insert(_ key: AnyResolvedKey) {
-  if !contains(key: key) { append(key) }
- }
-
- mutating func merge(_ other: Self) {
-  for key in other where
-   !contains(where: { $0.description == key.description }) {
-   self.append(key)
-  }
- }
-}
-
-var _mirrors = [ObjectIdentifier: [ObjectIdentifier: ContentMirror]]()
-var _reflections: [ReflectionIndex: Reflection] = .empty
-var _filters: [BloomFilter<String>] = .empty
-var _ignore = true
-var _lastOffset = 0
-var _values: [[AnyContent]] = .empty
-var _elements: [[ReflectionIndex]] = .empty
-
-unowned var _publisher: AnyContentPublisher?
-var _keyType: Any.Type!
+public typealias ReflectionIndex = Graphex<[SomeContent]>
 
 /// The contents of a single content structure, established by a publisher
-struct ContentMirror: Indexer {
- typealias Base = [AnyContent]
- typealias Element = ReflectionIndex
- var index: Int = _lastOffset
- var keyType: Any.Type! {
-  get { _keyType }
-  nonmutating set { _keyType = newValue }
+public struct ContentMirror: Indexer {
+ public typealias Base = [SomeContent]
+ public typealias Element = ReflectionIndex
+ var publisher: AnyContentPublisher!
+ public var index: Int
+ var key: AnyHashable?
+ let keyType: Any.Type
+
+ let _reflections: UnsafeMutablePointer<[ReflectionIndex: Reflection]>
+ var reflections: [ReflectionIndex: Reflection] {
+  unsafeAddress { UnsafePointer(_reflections) }
+  nonmutating unsafeMutableAddress { _reflections }
  }
 
- var filters: [BloomFilter<String>] {
-  get { _filters }
-  nonmutating set { _filters = newValue }
+ let _properties: UnsafeMutablePointer<[UUID: (PropertyInfo, ReflectionIndex)]>
+ var properties: [UUID: (PropertyInfo, ReflectionIndex)] {
+  unsafeAddress { UnsafePointer(_properties) }
+  nonmutating unsafeMutableAddress { _properties }
  }
 
- var publisher: AnyContentPublisher! {
-  get { _publisher }
-  nonmutating set { _publisher = newValue }
+ let _filter: UnsafeMutablePointer<BloomFilter<String>>
+ var filter: BloomFilter<String> {
+  unsafeAddress { UnsafePointer(_filter) }
+  nonmutating unsafeMutableAddress { _filter }
  }
 
- func reset() {
-  publisher = nil
-  keyType = nil
+ let _values: UnsafeMutablePointer<[[SomeContent]]>
+ var values: [[SomeContent]] {
+  unsafeAddress { UnsafePointer(_values) }
+  nonmutating unsafeMutableAddress { _values }
  }
 
- init(_ contents: [AnyContent]) {
-  defer { _lastOffset = index + 1 }
+ let _elements: UnsafeMutablePointer<[[ReflectionIndex]]>
+ var elements: [[ReflectionIndex]] {
+  unsafeAddress { UnsafePointer(_elements) }
+  nonmutating unsafeMutableAddress { _elements }
+ }
+
+ init(
+  publisher: AnyContentPublisher,
+  key: AnyHashable?,
+  keyType: Any.Type,
+  reflections: inout [[ReflectionIndex: Reflection]],
+  properties: inout [[UUID: (PropertyInfo, ReflectionIndex)]],
+  filters: inout [BloomFilter<String>],
+  values: inout [[SomeContent]],
+  elements: inout [[ReflectionIndex]],
+  _ contents: [SomeContent],
+  offset: inout Int
+ ) {
+  defer { offset = index + 1 }
+  self.publisher = publisher
+  self.key = key
+  self.keyType = keyType
+  self.index = offset
+
+  reflections.append([ReflectionIndex: Reflection]())
+  self._reflections = withUnsafeMutablePointer(to: &reflections[index]) { $0 }
+
+  properties.append([UUID: (PropertyInfo, ReflectionIndex)]())
+  self._properties = withUnsafeMutablePointer(to: &properties[index]) { $0 }
+
   // set the filter for the currently cached index for the mirror
   filters.append(.optimized(for: Reflection.filterCount))
+  self._filter = withUnsafeMutablePointer(to: &filters[index]) { $0 }
+
+  self._values = withUnsafeMutablePointer(to: &values) { $0 }
+  self._elements = withUnsafeMutablePointer(to: &elements) { $0 }
 
   ReflectionIndex.initiate(
    with: contents,
-   values: &_values,
-   elements: &_elements,
-   offset: _lastOffset
+   values: &values,
+   elements: &elements,
+   offset: index
   )
 
   initialElement.step(callAsFunction)
@@ -100,200 +86,218 @@ struct ContentMirror: Indexer {
 }
 
 extension ContentMirror {
- var lastOffset: Int {
-  get { _lastOffset }
-  nonmutating set { _lastOffset = newValue }
- }
-
  var initialElement: ReflectionIndex {
-  get { _elements[index][0] }
-  set { _elements[index][0] = newValue }
+  get { elements[index][0] }
+  nonmutating set { elements[index][0] = newValue }
  }
 
- var first: AnyContent {
-  get { _values[index][0] }
-  set { _values[index][0] = newValue }
+ var first: SomeContent {
+  get { values[index].first.unsafelyUnwrapped }
+  nonmutating set { values[index][0] = newValue }
  }
 }
 
-extension ContentMirror {
+public extension ContentMirror {
  @discardableResult
- func callAsFunction(_ element: ReflectionIndex) -> AnyContent? {
-//   print(element, terminator: "\n\n")
+ func callAsFunction(_ element: ReflectionIndex) -> SomeContent? {
   let info = element.value.info
   let name = info.name
   let mangledName: String = info.mangledName
+
   #if DEBUG
-   print("→ Mirroring:", info.name)
+   log("→ Mirroring:", info.name, for: .mirror, with: .subject)
   #endif
 
   func updateParent(_ reflection: Reflection) {
    #if DEBUG
-    print("\(name) has a reflection")
+    log("\"\(name)\" has a reflection", for: .mirror)
    #endif
    if Reflection.types.contains(mangledName) {
     #if DEBUG
-     print("Filtering \(name)")
+     log("Filtering \"\(mangledName)\"", for: .mirror)
     #endif
-    filters[index].insert(mangledName)
+    filter.insert(mangledName)
    }
 
    // set parent immediately after setting current reflection
    if let parent =
-    element.start == element ? nil : element.start.value._reflection {
+    element.start == element ? nil :
+    element.start.value._reflection ?? reflections[element.start] {
     #if DEBUG
-     print("\(name) has parent\n")
+     log("\"\(name)\" has parent \"\(parent.keyType)\"\n", for: .mirror)
     #endif
+
     reflection.parent = parent
 
     guard var parent = reflection.parent else {
-     fatalError("Parent missing for \(name)")
+     fatalError("Parent missing for \"\(name)\"")
     }
     parent.add(name: mangledName)
     // merge and establish parent properties
     /// - note setting some inherited traits will cause conflicts that
     /// can be resolved
-    reflection.traitsCache
-     .assign(to: &element.start.value._reflection!.traitsCache)
-
-    reflection.attributesCache
-     .assign(to: &element.start.value._reflection!.attributesCache)
+    reflection.traitsCache.assign(to: &parent.traitsCache)
+    reflection.attributesCache.assign(to: &parent.attributesCache)
    } else {
-    // print("\(name) has no parent reflection")
+    #if DEBUG
+     log("\"\(name)\" has no parent reflection", for: .mirror)
+    #endif
    }
   }
 
   // public values aren't intended to store a reflection
-  if !element.value.isPublic, element.value.isDynamic {
+  if element.value.isDynamic {
    // assigning the reflection for all content with reflections or DynamicContent
-   if _reflections[element] == nil {
-    _reflections[element] =
-     Reflection(
-      publisher,
-      keyType: keyType, subjectType: info.type, index: element
-     )
-    element.value._reflection = _reflections[element].unsafelyUnwrapped
+   let reflection = Reflection(
+    publisher,
+    key: key,
+    keyType: keyType,
+    subjectType: info.type,
+    index: element
+   )
+
+   if element.value._reflection == nil {
+    // set stored reflection
+    element.value._reflection = reflection
+    if element.value._reflection == nil {
+     // set detached reflection
+     reflections[element] = reflection
+    }
    }
-   guard element.value._reflection != nil
-   else { fatalError("Reflection missing for \(name)") }
+   guard (element.value._reflection ?? reflections[element]) != nil
+   else { fatalError("Reflection missing for \"\(name)\"") }
   }
 
-  if let reflection = element.value._reflection {
+  if var reflection = element.value._reflection ?? reflections[element] {
    updateParent(reflection)
-
    if var enclosure = element.value as? any EnclosedContent {
     enclosure.update(reflection)
     element.value = enclosure
-
    } else if let identifiable = element.value as? any IdentifiableContent {
     reflection.name = identifiable.id.description
-
     #if DEBUG
-     print("\(name) has name: \(identifiable.id.description)")
+     log("\"\(name)\" has name: \(identifiable.id.description)", for: .mirror)
     #endif
-    if mangledName == "Folder" {
-     reflection.createDirectory()
-    }
    } else if var modified = element.value as? any StructureModifier {
-    modified.update(reflection)
+    modified.update()
+    updateProperty(
+     with: modified.identifier, &reflection
+    )
     element.value = modified
+   }
+  }
 
-   } else if mangledName != "Group" {
-    addProperties(info, &element.value, with: reflection)
-   }
-  } else {
-   if mangledName != "Array" {
-    _reflections[element] =
-     Reflection(
-      publisher,
-      keyType: keyType, subjectType: info.type, index: element
-     )
-    let reflection = _reflections[element].unsafelyUnwrapped
-    if addProperties(info, &element.value, with: reflection) {
-     updateParent(reflection)
-    } else {
-     _reflections[element] = nil
-    }
-   }
+  // exclude strucural types when updating properties
+  if !["Group", "Folder", "ForEach", "Array"].contains(mangledName) {
+   updateProperties(info, element, &element.value)
   }
 
   if element.value.hasContents {
    /// - remark: This usually be an array or single content array
-   if let array = element.value.content as? [AnyContent] {
+   if let array = element.value.content as? [SomeContent] {
+    #if DEBUG
+     log("Rebasing \"\(name)\" ⇥\n", for: .mirror)
+    #endif
     element.rebase(array, callAsFunction)
    } else {
     #if DEBUG
-     print("⇥ \(name) has some contents\n")
+     log("⇥ \"\(name)\" has some contents\n", for: .mirror)
     #endif
     return element.value.content
    }
-  } else if let variadic = element.value as? any VariadicContent,
-            let array = variadic._contents.wrapped {
-   if let traits = variadic._traits {
-    element.value._reflection?.traits = traits
+  } else if let variadic = element.value as? any VariadicContent {
+   let contents = variadic._contents
+   let array =
+    contents is [[SomeContent]] ?
+    (contents as! [[SomeContent]]).flatMap { $0 } : contents
+   // accept contained reflections on variadic content
+   if let reflection = element.value._reflection {
+    reflection.traits.merge(with: variadic._traits)
+    reflection.attributes.merge(with: variadic._attributes)
+    reflection.setAttributes()
+    if variadic._traits.contentType == .folder {
+     reflection.createDirectory()
+    }
    }
-
-   if let attributes = variadic._attributes {
-    element.value._reflection?.attributes = attributes
-   }
+   #if DEBUG
+    log("Rebasing \"\(name)\" ⇥ \(array)\n", for: .mirror)
+   #endif
    element.rebase(array, callAsFunction)
   }
   #if DEBUG
-   print("\(name) has no contents ⇥\n")
+   log("\"\(name)\" has no contents ⇥\n", for: .mirror)
   #endif
   return nil
  }
 }
 
 extension ContentMirror {
- @discardableResult
- func addProperties(
-  _ info: TypeInfo,
-  _ content: inout AnyContent, with buffer: Reflection
- ) -> Bool {
-  var hasProperty = false
-  for propertyInfo in info.properties {
-   let mangledName: String = .withName(for: propertyInfo.type)
-   guard Reflection.properties.contains(mangledName) else { continue }
-   hasProperty = true
-   /** - remark: swiftui underscored implementation for dynamic properties
-    (property as! any DynamicProperty)._propertyBehaviors
-    (property as! any DynamicProperty).
-    _makeProperty(
-    in: SwiftUI._DynamicPropertyBuffer,
-    container: SwiftUI._GraphValue<V>,content
-    fieldOffset: Int,
-    inputs: SwiftUI._GraphInputs
-    ) */
-   var property = propertyInfo.get(from: content) as! any ReflectedProperty
-
-   // assigning the same reflection for all properties
-   property._reflection = buffer
-
-   property.update()
-   propertyInfo.set(value: property, on: &content)
-
-   // apply filtering
-   filters[index].insert(mangledName)
-   buffer.types.insert(mangledName)
-
-   #if DEBUG
-    print("\(info.name) has \(mangledName) named \(propertyInfo.name)")
-   #endif
-  }
-  return hasProperty
+ func updateProperty(with id: UUID, _ reflection: inout Reflection) {
+  guard let (info, index) = properties[id] else { fatalError() }
+  var property = info.get(from: index.value) as! any ReflectedProperty
+  property._reflection = reflection
+  property.update()
+  info.set(value: property, on: &index.value)
+  let mangledName: String = .withName(for: info.type)
+  reflection.add(name: mangledName)
+  #if DEBUG
+   log(
+    """
+    ✔︎ Set Identified property \'\(mangledName)\' on \"\(index.value)\" \
+    named \(info.name)\n
+    """,
+    for: .property, with: .mirror
+   )
+  #endif
  }
 
- @discardableResult
- func addAlias(
+ func updateProperties(
   _ info: TypeInfo,
-  _ content: inout AnyContent, with buffer: Reflection
- ) -> Bool {
-  var hasProperty = false
+  _ index: ReflectionIndex,
+  _ content: inout SomeContent
+ ) {
+  #if DEBUG
+   log(
+    "⇥ Mirroring properties on \"\(info.mangledName)\"\n",
+    for: .mirror, with: .property
+   )
+  #endif
   for propertyInfo in info.properties {
    let mangledName: String = .withName(for: propertyInfo.type)
-   guard mangledName == "Alias" else { continue }
-   hasProperty = true
+   if let property =
+    propertyInfo.get(from: content) as? any IdentifiableProperty {
+    properties[property.identifier] = (propertyInfo, index)
+    #if DEBUG
+     log(
+      """
+      ⇥ Identified property \'\(mangledName)\' on \(info.name) \
+      named \(propertyInfo.name)\n
+      """,
+      for: .mirror, with: .property
+     )
+    #endif
+   } else if var property =
+    propertyInfo.get(from: content) as? any ReflectedProperty {
+    // get detached reflection
+    var reflection = content._reflection ?? reflections[index].unsafelyUnwrapped
+
+    // assigning the same reflection for all properties
+    // public content will not have a reflection but all others can have
+    property._reflection = reflection
+    property.update()
+    propertyInfo.set(value: property, on: &content)
+    // apply filtering
+    reflection.add(name: mangledName)
+
+    #if DEBUG
+     log(
+      "⇥ Found property \'\(mangledName)\' on \"\(info.name)\"\n",
+      for: .mirror, with: .property
+     )
+     reflection.displayAttributes()
+    #endif
+
+   } else { continue }
    /** - remark: swiftui underscored implementation for dynamic properties
     (property as! any DynamicProperty)._propertyBehaviors
     (property as! any DynamicProperty).
@@ -303,22 +307,31 @@ extension ContentMirror {
     fieldOffset: Int,
     inputs: SwiftUI._GraphInputs
     ) */
-   var property = propertyInfo.get(from: content) as! any ReflectedProperty
-
-   // assigning the same reflection for all properties
-   property._reflection = buffer
-
-   property.update()
-   propertyInfo.set(value: property, on: &content)
-
-   // apply filtering
-   filters[index].insert(mangledName)
-   buffer.types.insert(mangledName)
-
-   #if DEBUG
-    print("\(info.name) has \(mangledName) named \(propertyInfo.name)")
-   #endif
   }
-  return hasProperty
+ }
+}
+
+// MARK: Extensions
+extension Graphex: CustomStringConvertible where Base == [SomeContent] {
+ public var description: String {
+  let startInfo = start == self ? "start" :
+   """
+   \(String.withName(from: start.value)), \(start.position), \(start.offset), \
+   elements[\(start.elementRange)], base[\(start.baseRange)]
+   """
+  let previousInfo = previous == nil ? "nil" :
+   """
+   \(String.withName(from: previous!.value)), \
+   \(previous!.position), \(previous!.offset)
+   """
+  let nextInfo = next == nil ? "nil" :
+   "\(String.withName(from: next!.value)), \(next!.position), \(next!.offset)"
+  return """
+  ↘︎\n 􀅳 \(String.withName(from: value)), \(position), \(offset), \
+  elements[\(elementRange)], base[\(baseRange)]
+  \(String.space)⇤ start: \(startInfo)
+  \(String.space)⇠ previous: \(previousInfo)
+  \(String.space)⇢ next: \(nextInfo)
+  """
  }
 }

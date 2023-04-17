@@ -6,7 +6,7 @@ import XCTest
   measure { print(ContentManager.standard.static) }
  }
 
- func testStaticContent() {
+ func testContent() {
   ContentApp.main()
  }
 }
@@ -17,26 +17,15 @@ struct EmptyStructure: Codable, Infallible {
  var info = "Default Info"
 }
 
-extension [String: String]: SelfCodable {
- public static func encode(_ value: Self) throws -> Data {
-  try JSONEncoder().encode(value)
- }
-
- public static func decode(_ data: Data) throws -> Self {
-  try JSONDecoder().decode(Self.self, from: data)
- }
-}
-
-@MainActor final class ContentManager: FileObserver, ContentPublisher {
+@MainActor final class ContentManager: ObservableContentPublisher {
  static let standard = ContentManager()
  static let searchPath: SearchPath = .cache
  @Public var `static`: Contents
- /// todo: pass ``NominalStructure`` to read and write structures that are
- /// static
 }
 
 // MARK: - Content Structure
 struct Contents: PublicContent {
+ @Attribute(\.name) var name: String = "Content"
  @Alias var readme: String?
  @Alias var json: EmptyStructure?
  @Alias var json2: EmptyStructure?
@@ -64,9 +53,8 @@ struct Contents: PublicContent {
     .alias($readme)
    /// - note provides a default value with the `??` operator
    /// A test swift script that can execute a swift script using swift-sh
-   (Nominal("test") ??
+   (Nominal("test", .swiftSource) ??
     "#!/usr/bin/swift sh\nlet str = \"Hello World!\"\nprint(str)")
-    .type(.swiftSource)
     .permissions(.ownerReadWriteExecute)
    Group {
     JSON<EmptyStructure>("2").alias($json2)
@@ -77,20 +65,6 @@ struct Contents: PublicContent {
   }
   // MARK: - Transactional Interface
   Folder("Transactional") {
-   // when the transaction is changed, so are the contents
-   // it's optional but most times required to read the folder and
-   // and create bindings to the relevant files in a single data
-   // structure to encode and decode the alias that relate to the
-   // transaction, therefore transactions must be written to the file
-   // through an alias or `ContentStructure`
-   /* ContentTransaction<UUIDTransaction<UUID>> { reciept in
-     Folder(reciept.source) {
-      JSON<EmptyStructure>("Sender").type(.json)
-      Folder(reciept.target) {
-       JSON<EmptyStructure>("Reciever").type(.json)
-      }
-     }
-    } */
    JSON<EmptyStructure>().alias($json)
    JSON<EmptyStructure>().alias($json2)
   }
@@ -109,7 +83,6 @@ struct ContentApp: App {
   }
  }
 }
-
 
 struct ContentView: View {
  @EnvironmentObject var content: ContentManager
@@ -251,4 +224,3 @@ struct ContentView: View {
   .onAppear(perform: content.display)
  }
 }
-

@@ -1,7 +1,8 @@
-@_exported @testable import Composite
-struct Attributes: KeyValues {
- var values: [String: Any] = .empty
- static var defaultValues: OrderedDictionary<String, Any> {
+@_exported import Composite
+public struct Attributes: KeyValues {
+ public init() {}
+ public var values: [String: Any] = .empty
+ public static var defaultValues: OrderedDictionary<String, Any> {
   [
    PathKey.description: PathKey.resolvedValue as Any,
    NameKey.description: NameKey.defaultValue,
@@ -17,6 +18,6 @@ struct Attributes: KeyValues {
  }
 }
 
-extension DynamicContent {
+public extension DynamicContent {
  typealias Attribute<Value> = AttributeProperty<Value, Self>
 }

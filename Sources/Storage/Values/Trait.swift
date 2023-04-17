@@ -1,31 +1,40 @@
-@_exported @testable import Composite
-protocol TraitKey: ResolvedKey {}
+@_exported import Composite
+public protocol TraitKey: ResolvedKey {}
 
-struct ObservableKey: TraitKey, DefaultKey {
- static let defaultValue = true
+public struct ObservableKey: TraitKey, DefaultKey {
+ public static let defaultValue = true
 }
 
-struct ContentTypeKey: TraitKey, OptionalKey {
- typealias Value = ContentType
+public struct ContentTypeKey: TraitKey, OptionalKey {
+ public typealias Value = ContentType
 }
 
-struct RecursiveKey: TraitKey, DefaultKey {
- typealias Value = Bool
+public struct RecursiveKey: TraitKey, DefaultKey {
+ public typealias Value = Bool
 }
 
-struct RemovalMethodKey: TraitKey, DefaultKey {
- typealias Value = RemovalMethod
+public struct RemovalMethodKey: TraitKey, DefaultKey {
+ public typealias Value = RemovalMethod
 }
 
-struct CreateMethodKey: TraitKey, DefaultKey {
- typealias Value = CreateMethod
+public struct CreateMethodKey: TraitKey, DefaultKey {
+ public typealias Value = CreateMethod
 }
 
-struct UTTypeKey: TraitKey, OptionalKey {
- typealias Value = UTType
+public struct UTTypeKey: TraitKey, OptionalKey {
+ public typealias Value = UTType
 }
 
-extension Traits {
+public struct ContentKey: TraitKey, OptionalKey {
+ public typealias Value = AnyHashable
+}
+
+public extension Traits {
+ var key: AnyHashable? {
+  get { self[ContentKey.self] }
+  set { self[ContentKey.self] = newValue }
+ }
+
  var isObservable: Bool {
   get { self[ObservableKey.self] }
   set { self[ObservableKey.self] = newValue }
@@ -57,6 +66,6 @@ extension Traits {
  }
 }
 
-extension UTType {
+public extension UTType {
  static let markdown = Self(filenameExtension: "md", conformingTo: .text)!
 }

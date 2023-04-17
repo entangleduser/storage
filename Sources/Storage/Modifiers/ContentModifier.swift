@@ -1,6 +1,6 @@
-protocol ContentModifier: Content {
+public protocol ContentModifier: Content {
  associatedtype Enclosure: Content
  associatedtype Value
 }
 
-protocol AttributeModifier: ContentModifier, ReflectedContent {}
+public protocol AttributeModifier: ContentModifier, ReflectedContent {}

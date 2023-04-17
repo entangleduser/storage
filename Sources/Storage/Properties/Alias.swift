@@ -1,24 +1,21 @@
 /// A dynamic property updates the contents of a filesystem
-@testable @_exported import Core
-@propertyWrapper final class Alias<Value>: DynamicProperty
+@propertyWrapper public struct Alias<Value>: ReflectedProperty
 where Value: ExpressibleByNilLiteral {
- unowned var _reflection: Reflection?
- var wrappedValue: Value {
+ public init() {}
+ public unowned var _reflection: Reflection?
+ let identifier: UUID = .defaultValue
+ public var wrappedValue: Value {
   get {
    guard let _reflection else { return nil }
    return _reflection[Value.self] ?? nil
   }
-  set {
+  nonmutating set {
    guard let _reflection else { fatalError("\(Self.self) not set to content") }
    _reflection[Value.self] = newValue
   }
  }
 
- var projectedValue: Alias<Value> { self }
- var binding: Binding<Value> {
-  Binding(get: { self.wrappedValue }, set:  { self.wrappedValue = $0 })
- }
- 
+ public var projectedValue: Alias<Value> { self }
  subscript<Subject>(dynamicMember keyPath: WritableKeyPath<Value, Subject>
  ) -> Subject? {
   get { wrappedValue[keyPath: keyPath] }
@@ -28,19 +25,33 @@ where Value: ExpressibleByNilLiteral {
   }
  }
 
- func update() {
+ public func update() {
   guard let _reflection else { return }
   if _reflection.update() {
    #if DEBUG
-    print("Updated \(Self.self)")
+    log("Updated \(Self.self)", for: .property)
    #endif
   } else {
    #if DEBUG
-    print("Deleted or missing \(Self.self)")
+    log("Deleted or missing \(Self.self)", for: .property)
    #endif
   }
  }
 }
+
+#if canImport(SwiftUI)
+ public extension Alias {
+  var binding: Binding<Value> {
+   Binding(get: { self.wrappedValue }, set: { self.wrappedValue = $0 })
+  }
+ }
+#endif
+
+protocol IdentifiableProperty: DynamicProperty {
+ var identifier: UUID { get }
+}
+
+extension Alias: IdentifiableProperty {}
 
 extension Alias {
  func trash(_ recovery: ((_ recoveryURL: URL?) -> Void)? = nil) {
@@ -72,7 +83,7 @@ extension Alias {
  /// when needed
  func get(_ id: some LosslessStringConvertible) -> Value {
   guard let _reflection else { fatalError() }
-  return _reflection.get(id: id, as: Value.self)
+  return _reflection.get(id: id, as: Value.self) ?? nil
  }
 
  /// Sets the associated value to `NominalContent`
@@ -89,31 +100,21 @@ extension Alias {
   _ id: some LosslessStringConvertible
  ) -> Value {
   get { get(id) }
-  set { set(newValue, with: id) }
+  nonmutating set { set(newValue, with: id) }
  }
 }
 
-/*// MARK: Queries and filters for variadic content
-extension Alias where Value: Sequence {
- /// Recieves a group of values based on a filter or criteria
- func get() -> Value {
-  nil
- }
-
- func set() -> Value { nil }
-}*/
-
 extension Alias: Identifiable where Value: Identifiable {
- var id: Value.ID? { wrappedValue.id }
+ public var id: Value.ID? { wrappedValue.id }
 }
 
 extension Alias: CustomStringConvertible where Value: CustomStringConvertible {
- var description: String { wrappedValue.description }
+ public var description: String { wrappedValue.description }
 }
 
 extension Alias: CustomDebugStringConvertible
 where Value: CustomDebugStringConvertible {
- var debugDescription: String { wrappedValue.debugDescription }
+ public var debugDescription: String { wrappedValue.debugDescription }
 }
 
 /*
