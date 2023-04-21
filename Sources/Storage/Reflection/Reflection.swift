@@ -179,7 +179,7 @@ public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
    do {
     defer { update() }
     guard let newValue else {
-     try remove()
+     remove()
      return
     }
     try structure.encode(newValue).write(to: url, options: .atomic)
@@ -615,11 +615,15 @@ extension Reflection {
   if let destination { recoveryURL = destination as URL }
  }
 
- func remove() throws {
-  if traits.removalMethod == .delete {
-   try delete()
-  } else {
-   try trash()
+ func remove() {
+  do {
+   if traits.removalMethod == .delete {
+    try delete()
+   } else {
+    try trash()
+   }
+  } catch {
+   onError?(.remove(error))
   }
  }
 
@@ -669,7 +673,12 @@ extension Reflection {
   defer { name = nil }
   name = id.description
   resolveTraits()
-  self[A.self] = newValue
+  
+  if newValue == nil {
+   remove()
+  } else {
+   self[A.self] = newValue
+  }
  }
 
  func getAll<Value>(as type: Value.Type) -> [Value] {

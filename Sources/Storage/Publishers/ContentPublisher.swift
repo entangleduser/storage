@@ -331,5 +331,4 @@ public typealias ObservableDefaults = ObservableContentPublisher & DefaultsPubli
 open class DefaultPublisher: ObservableDefaults {
  // TODO: Add search path override to traits
  public static var searchPath: SearchPath = .cache
- //public static var standard: Self { Self() }
 }

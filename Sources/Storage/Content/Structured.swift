@@ -19,11 +19,12 @@ public extension EnclosedContent {
  func encode(_ value: Value) throws -> Data { fatalError() }
 
  func encode(any value: Any) throws -> Data? {
+  guard let _reflection else { fatalError() }
   guard let newValue = value as? Value? else {
    throw Error.decoding(Swift.type(of: value), reason: "bad format")
   }
   guard let newValue else {
-   try _reflection?.remove()
+   _reflection.remove()
    return nil
   }
   return try encode(newValue)
@@ -91,9 +92,9 @@ public extension EnclosedContent {
  /// Update function for updating the property wrapper when updating the mirror
  func update() {
   guard let _reflection else { fatalError() }
-   #if DEBUG
-    log("Updated \(Self.self) for \(_reflection.keyType)", for: .structure)
-   #endif
+  #if DEBUG
+   log("Updated \(Self.self) for \(_reflection.keyType)", for: .structure)
+  #endif
  }
 
  /// A function most likely to be used with different types of data
@@ -121,8 +122,33 @@ public extension EnclosedContent {
    defer { _reflection.structure = nil }
    attach(to: _reflection)
    // cache and compare old values
-   for value in newValue {
-    _reflection.set(value, id: value[keyPath: namePath])
+   // TODO: Resolve ambiguities when appending more than one value
+   switch newValue.count {
+    case .zero:
+     let oldValues = _reflection.getAll(as: Value.self)
+     for oldValue in oldValues {
+      let name = oldValue[keyPath: namePath]
+      _reflection.set(Value?.none, id: name)
+     }
+    case 1:
+     let value = newValue.first.unsafelyUnwrapped
+     _reflection.set(value, id: value[keyPath: namePath])
+    case 2...:
+     let newValues = newValue
+     let oldValues = _reflection.getAll(as: Value.self)
+     if oldValues.count != newValues.count {
+      for oldValue in oldValues {
+       let name = oldValue[keyPath: namePath]
+       if !newValue.contains(where: { $0[keyPath: namePath] == name }) {
+        _reflection.set(Value?.none, id: name)
+       }
+      }
+     }
+     for value in newValue {
+      _reflection.set(value, id: value[keyPath: namePath])
+     }
+    default:
+     fatalError()
    }
   }
  }
@@ -420,11 +446,11 @@ public extension Traits {
  }
 }
 
-//extension Optional: Sequence where Wrapped: ExpressibleAsEmpty & Sequence {
+// extension Optional: Sequence where Wrapped: ExpressibleAsEmpty & Sequence {
 // public func makeIterator() -> Wrapped.Iterator {
 //  (self ?? .empty).makeIterator()
 // }
-//}
+// }
 
 extension String: StaticCodable {
  public static func encode(_ value: Self) throws -> Data {

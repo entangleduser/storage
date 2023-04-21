@@ -7,6 +7,14 @@ public protocol Defaults: KeyValues {
  static var storage: UserDefaults { get }
  static func reset()
  var values: [String: Any] { get nonmutating set }
+ subscript<A: ResolvedKey>(_ type: A.Type) -> A.ResolvedValue {
+  get nonmutating set
+ }
+ subscript<A: ResolvedKey>(
+  _ type: A.Type, default: A.ResolvedValue
+ ) -> A.ResolvedValue {
+  get nonmutating set
+ }
 }
 
 public extension Defaults {
@@ -14,8 +22,7 @@ public extension Defaults {
  func reset() { Self.reset() }
 }
 
-#if !canImport(SwiftUI)
- public struct DefaultValues: DefaultValues {
+ public struct DefaultValues: Defaults {
   public init() {}
   public unowned static var storage: UserDefaults = .standard
   public static func reset() {
@@ -54,5 +61,6 @@ public extension Defaults {
   }
  }
 
+#if !canImport(SwiftUI)
  public typealias Default<Value> = DefaultProperty<DefaultValues, Value>
 #endif

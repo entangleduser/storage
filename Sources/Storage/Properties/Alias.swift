@@ -72,8 +72,7 @@ extension Alias {
 
  func remove() {
   guard let _reflection else { return }
-  do { try _reflection.remove() }
-  catch { _reflection.onError?(.url(error)) }
+  _reflection.remove()
  }
 }
 

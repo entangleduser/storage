@@ -17,6 +17,7 @@ public enum Error: Swift.Error {
       existingFile(URL),
       set(Swift.Error),
       get(Swift.Error),
+      remove(Swift.Error),
       setAttribute(FileAttributeKey),
       getAttribute(FileAttributeKey),
       setResource(URLResourceKey),
@@ -28,34 +29,36 @@ public enum Error: Swift.Error {
 extension Error: LocalizedError {
  public var failureReason: String? {
   switch self {
-  case let .url(error):
-   return "url error: \(error.localizedDescription)"
-  case let .invalidTransaction(error):
-   return "transaction error: \(error.localizedDescription)"
-  case let .invalidTarget(key): return "invalid target: \(key)"
-  case let .existingFile(url): return "file exists at \"\(url.path)\""
-  case let .setAttribute(key):
-   return "attribute for key: \(key.rawValue), wasn't able to be set"
-  case let .getAttribute(key):
-   return "attribute for key: \(key.rawValue), doesn't exist"
-  case let .setResource(key):
-   return "resource for key: \(key.rawValue), wasn't able to be set"
-  case let .getResource(key):
-   return "resource for key: \(key.rawValue), doesn't exist"
-  case let .set(error):
-   return "set error: \(error.localizedDescription)"
-  case let .get(error):
-   return "get error: \(error.localizedDescription)"
-  case let .encoding(type, reason):
-   return "encoding error: \(type) couldn't be encoded" + (
-    reason == nil ? .empty : ", \(reason!)"
-   )
-  case let .decoding(type, reason):
-   return "decoding error: \(type) couldn't be decoded" + (
-    reason == nil ? .empty : ", \(reason!)"
-   )
-  case let .create(error):
-   return "creation error: \(error.localizedDescription)"
+   case let .url(error):
+    return "url error: \(error.localizedDescription)"
+   case let .invalidTransaction(error):
+    return "transaction error: \(error.localizedDescription)"
+   case let .invalidTarget(key): return "invalid target: \(key)"
+   case let .existingFile(url): return "file exists at \"\(url.path)\""
+   case let .setAttribute(key):
+    return "attribute for key: \(key.rawValue), wasn't able to be set"
+   case let .getAttribute(key):
+    return "attribute for key: \(key.rawValue), doesn't exist"
+   case let .setResource(key):
+    return "resource for key: \(key.rawValue), wasn't able to be set"
+   case let .getResource(key):
+    return "resource for key: \(key.rawValue), doesn't exist"
+   case let .set(error):
+    return "set error: \(error.localizedDescription)"
+   case let .get(error):
+    return "get error: \(error.localizedDescription)"
+   case let .remove(error):
+    return "remove error: \(error.localizedDescription)"
+   case let .encoding(type, reason):
+    return "encoding error: \(type) couldn't be encoded" + (
+     reason == nil ? .empty : ", \(reason!)"
+    )
+   case let .decoding(type, reason):
+    return "decoding error: \(type) couldn't be decoded" + (
+     reason == nil ? .empty : ", \(reason!)"
+    )
+   case let .create(error):
+    return "creation error: \(error.localizedDescription)"
   }
  }
 
