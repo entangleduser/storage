@@ -36,7 +36,11 @@ public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
  unowned var parent: Reflection?
  unowned var publisher: AnyContentPublisher!
  public var index: ReflectionIndex
- func updateIndex() { mirror.unsafelyUnwrapped.callAsFunction(index) }
+ func updateIndex() {
+  defer { publisher.objectWillChange.send() }
+  guard !publisher.ignore else { return }
+  mirror.unsafelyUnwrapped.callAsFunction(index)
+ }
 
  var value: SomeContent {
   get { index.value }
@@ -127,7 +131,7 @@ public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
   )
  }
 
-
+ @discardableResult
  func updateIfExisting() -> Bool {
   defer {
    #if DEBUG
@@ -136,9 +140,7 @@ public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
    publisher.objectWillChange.send()
   }
   if exists {
-   if traits.isObservable {
-    publisher.observe(self)
-   }
+   if traits.isObservable { publisher.observe(self) }
    return true
   } else {
    // publisher.stopObserving(self)
@@ -146,21 +148,14 @@ public class Reflection: IndexedPropertyCache, Identifiable, Equatable {
   }
  }
 
- func update(_ mirror: ContentMirror) -> Bool {
-  return updateIfExisting()
- }
+ @discardableResult func update() -> Bool { updateIfExisting() }
 
- @discardableResult func update() -> Bool {
-  updateIfExisting()
- }
- 
  /// Useful when the dynamic content of a content structure is changed
  /// - returns: true if the content exists on the filesystem
  @discardableResult func updateMirror() -> Bool {
   updateIndex()
   return updateIfExisting()
  }
- 
 
  subscript<A: EnclosedContent>(_ structure: A) -> A.Value? {
   get {
@@ -604,12 +599,16 @@ extension Reflection {
  var exists: Bool { publisher.fileExists(atPath: _path) }
 
  func delete() throws {
-  guard let _url else { return }
+  guard let _url else {
+   return
+  }
   try publisher.removeItem(at: _url)
  }
 
  func trash() throws {
-  guard let _url else { return }
+  guard let _url else {
+   return
+  }
   var destination: NSURL?
   try publisher.trashItem(at: _url, resultingItemURL: &destination)
   if let destination { recoveryURL = destination as URL }
@@ -624,6 +623,7 @@ extension Reflection {
    }
   } catch {
    onError?(.remove(error))
+   fatalError(error.localizedDescription)
   }
  }
 
@@ -668,26 +668,61 @@ extension Reflection {
 
 // MARK: Transactional
 // Create a transaction closure for reflections
+/// TODO: Observe paths that structured content depends on, if set to be
+/// observable then cache, filter, and page values based on context
 extension Reflection {
- func set<A>(_ newValue: A?, id: some LosslessStringConvertible) {
-  defer { name = nil }
-  name = id.description
-  resolveTraits()
-  
-  if newValue == nil {
-   remove()
+ var root: Reflection? {
+  self.traits.contentType == .folder ? self : self.parent
+ }
+
+ func getURL(id: Any) -> URL? {
+  let path = String(describing: id).readable
+  guard let path = path.wrapped, path != "nil" else { return nil }
+  self.name = path
+  self.resolveTraits()
+  return url
+//  if let utType = traits.utType {
+//   return directory.appendingPathComponent(path, conformingTo: utType)
+//  } else {
+//   return directory.appendingPathComponent(path)
+//  }
+ }
+
+ func remove(id: Any) {
+  guard let url = getURL(id: id) else { fatalError() }
+  do {
+   if traits.removalMethod == .delete {
+    try publisher.removeItem(at: url)
+   } else {
+    var destination: NSURL?
+    try publisher.trashItem(at: url, resultingItemURL: &destination)
+    if let destination { recoveryURL = destination as URL }
+   }
+  } catch {
+   onError?(.remove(error))
+  }
+ }
+
+ func set(_ newValue: (some Any)?, id: Any) {
+  if let newValue {
+   guard let url = getURL(id: id) else { return }
+   do {
+    try structure.unsafelyUnwrapped.encode(any: newValue)?
+     .write(to: url, options: .atomic)
+   } catch {
+    onError?(.set(error))
+   }
   } else {
-   self[A.self] = newValue
+   remove(id: id)
   }
  }
 
  func getAll<Value>(as type: Value.Type) -> [Value] {
-  guard let utType = traits.utType,
+  guard let root, let utType = traits.utType,
         let contents = try? publisher.contentsOfDirectory(
-         at: directory, includingPropertiesForKeys: [.contentTypeKey]
+         at: root.directory, includingPropertiesForKeys: [.contentTypeKey]
         )
   else { return .empty }
-
   return contents.compactMap { url in
    let `extension` = url.pathExtension
    if utType.preferredFilenameExtension == `extension` {
@@ -698,10 +733,81 @@ extension Reflection {
   }
  }
 
- func get<A>(id: some LosslessStringConvertible, as type: A.Type) -> A? {
-  defer { name = nil }
-  name = id.description
-  resolveTraits()
-  return self[A.self]
+ func get<A>(id: Any, as type: A.Type) -> A? {
+  guard let url = getURL(id: id) else { return nil }
+  do {
+   return try structure.unsafelyUnwrapped
+    .decode(any: Data(contentsOf: url), as: type)
+  } catch {
+   onError?(.get(error))
+   return nil
+  }
+ }
+}
+
+extension Reflection {
+ func getURL(id: Any, on structure: some EnclosedContent) -> URL? {
+  let path = String(describing: id).readable
+  guard let path = path.wrapped, path != "nil" else { return nil }
+  guard let root else { fatalError() }
+  if let utType = structure._traits.utType {
+   return root.directory.appendingPathComponent(path, conformingTo: utType)
+  } else {
+   return root.directory.appendingPathComponent(path)
+  }
+ }
+
+ func remove(id: Any, on structure: some EnclosedContent) {
+  guard let url = getURL(id: id, on: structure) else { fatalError() }
+  do {
+   if structure._traits.removalMethod == .delete {
+    try publisher.removeItem(at: url)
+   } else {
+    var destination: NSURL?
+    try publisher.trashItem(at: url, resultingItemURL: &destination)
+    if let destination { recoveryURL = destination as URL }
+   }
+  } catch {
+   onError?(.remove(error))
+  }
+ }
+
+ func set<A: EnclosedContent>(_ newValue: A.Value?, id: Any, on structure: A) {
+  if let newValue {
+   guard let url = getURL(id: id, on: structure) else { return }
+   do {
+    try structure.encode(newValue).write(to: url)
+   } catch {
+    onError?(.set(error))
+   }
+  } else {
+   remove(id: id, on: structure)
+  }
+ }
+
+ func getAll<A: EnclosedContent>(on structure: A) -> [A.Value] {
+  guard let root, let utType = structure._traits.utType,
+        let contents = try? publisher.contentsOfDirectory(
+         at: root.directory, includingPropertiesForKeys: [.contentTypeKey]
+        )
+  else { return .empty }
+  return contents.compactMap { url in
+   let `extension` = url.pathExtension
+   if utType.preferredFilenameExtension == `extension` {
+    let name = url.deletingPathExtension().lastPathComponent
+    return get(id: name, on: structure)
+   }
+   return nil
+  }
+ }
+
+ func get<A: EnclosedContent>(id: Any, on structure: A) -> A.Value? {
+  guard let url = getURL(id: id, on: structure) else { return nil }
+  do {
+   return try structure.decode(Data(contentsOf: url, options: .mappedIfSafe))
+  } catch {
+   onError?(.get(error))
+   return nil
+  }
  }
 }

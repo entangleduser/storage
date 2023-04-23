@@ -22,44 +22,44 @@ public extension Defaults {
  func reset() { Self.reset() }
 }
 
- public struct DefaultValues: Defaults {
-  public init() {}
-  public unowned static var storage: UserDefaults = .standard
-  public static func reset() {
-   for key in defaultValue.values.keys { storage.removeObject(forKey: key) }
-  }
+public struct DefaultValues: Defaults {
+ public init() {}
+ public unowned static var storage: UserDefaults = .standard
+ public static func reset() {
+  for key in defaultValue.values.keys { storage.removeObject(forKey: key) }
+ }
 
-  @inlinable public var values: [String: Any] {
-   get { Self.storage.dictionaryRepresentation() }
-   nonmutating set {
-    for (key, value) in newValue { Self.storage.set(value, forKey: key) }
-   }
-  }
-
-  public subscript<A: ResolvedKey>(_ type: A.Type) -> A.ResolvedValue {
-   get {
-    A.resolveValue(Self.storage.value(forKey: type.description) as? A.Value)
-   }
-   nonmutating set {
-    Self.storage.set(A.storeValue(newValue), forKey: type.description)
-   }
-  }
-
-  public subscript<A: ResolvedKey>(
-   _ type: A.Type, default: A.ResolvedValue
-  ) -> A.ResolvedValue {
-   get {
-    A.resolveValue(
-     Self.storage.value(forKey: type.description) as? A.Value
-    )
-   }
-   nonmutating set {
-    Self.storage.set(
-     A.storeValue(newValue) ?? `default`, forKey: type.description
-    )
-   }
+ @inlinable public var values: [String: Any] {
+  get { Self.storage.dictionaryRepresentation() }
+  nonmutating set {
+   for (key, value) in newValue { Self.storage.set(value, forKey: key) }
   }
  }
+
+ public subscript<A: ResolvedKey>(_ type: A.Type) -> A.ResolvedValue {
+  get {
+   A.resolveValue(Self.storage.value(forKey: type.description) as? A.Value)
+  }
+  nonmutating set {
+   Self.storage.set(A.storeValue(newValue), forKey: type.description)
+  }
+ }
+
+ public subscript<A: ResolvedKey>(
+  _ type: A.Type, default: A.ResolvedValue
+ ) -> A.ResolvedValue {
+  get {
+   A.resolveValue(
+    Self.storage.value(forKey: type.description) as? A.Value
+   )
+  }
+  nonmutating set {
+   Self.storage.set(
+    A.storeValue(newValue) ?? `default`, forKey: type.description
+   )
+  }
+ }
+}
 
 #if !canImport(SwiftUI)
  public typealias Default<Value> = DefaultProperty<DefaultValues, Value>

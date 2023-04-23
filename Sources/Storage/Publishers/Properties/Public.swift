@@ -38,7 +38,6 @@ public struct ObservableContent<Publisher: ContentPublisher>: DynamicProperty {
  }
 
  public let projectedValue: Wrapper
- public func update() { wrappedValue.objectWillChange.send() }
 }
 
 extension ContentPublisher where Self: ContentCache {

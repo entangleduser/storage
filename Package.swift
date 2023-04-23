@@ -7,8 +7,8 @@ let package = Package(
  platforms: [.macOS(.v12), .iOS(.v14)],
  products: [.library(name: "Storage", targets: ["Storage"])],
  dependencies: [
-//  .package(path: "../Core"),
-//  .package(path: "../Configuration")
+  //  .package(path: "../Core"),
+  //  .package(path: "../Configuration")
   .package(url: "https://github.com/neutralradiance/core", branch: "main"),
   .package(
    url: "https://github.com/neutralradiance/configuration", branch: "main"

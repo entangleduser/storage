@@ -31,7 +31,7 @@ public struct ContentDomainMask: OptionSet, @unchecked Sendable {
 }
 
 // MARK: Protocols
-public protocol StaticPublisher: ObservableObject, Identifiable
+public protocol StaticPublisher: ObservableObject
 where Self.ObjectWillChangePublisher == ObservableObjectPublisher {
  static var standard: Self { get }
 }

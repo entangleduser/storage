@@ -80,7 +80,7 @@ extension Alias {
  /// Retrieves the value associated with `NominalContent`
  /// Transactional tokens effectively change the name of the structure
  /// when needed
- func get(_ id: some LosslessStringConvertible) -> Value {
+ func get(_ id: AnyHashable) -> Value {
   guard let _reflection else { fatalError() }
   return _reflection.get(id: id, as: Value.self) ?? nil
  }
@@ -88,7 +88,7 @@ extension Alias {
  /// Sets the associated value to `NominalContent`
  func set(
   _ newValue: Value,
-  with id: some LosslessStringConvertible
+  with id: AnyHashable
  ) {
   guard let _reflection else { fatalError() }
   _reflection.set(newValue, id: id)
@@ -96,7 +96,7 @@ extension Alias {
 
  /// Subscript a property via direct transaction through the source value
  subscript(
-  _ id: some LosslessStringConvertible
+  _ id: AnyHashable
  ) -> Value {
   get { get(id) }
   nonmutating set { set(newValue, with: id) }

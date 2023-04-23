@@ -7,7 +7,12 @@ public struct Folder
  public let id: ID
  public let contents: () -> Structure
  public var _contents: [SomeContent] {
-  ignoreContent { contents() as! [SomeContent] }
+  ignoreContent {
+   let contents = contents()
+   return (contents is [[SomeContent]] ?
+    (contents as! [[SomeContent]]).flatMap { $0 } : contents as! [SomeContent])
+    .map { $0.merge(with: self) }
+  }
  }
 
  public init(_ name: ID, @Storage.Contents contents: @escaping () -> Structure) {
@@ -43,18 +48,24 @@ extension Folder where Structure == EmptyContent {
 /// Forms variadic content that can be modified to as a result of the closure
 /// Contents within the closure are bound by the offset of the element
 /// and compared by the specific indicator that conforms to hashable
+/// Traits and attributes applied to a `ForEach` structure should merge with
+/// the result of the closure
+/// To translate a property wrapper from another framework, an observable
+/// key path to the elements must be accessed
 public struct ForEach<Elements: RandomAccessCollection>: VariadicContent {
  public var _reflection: Reflection?
- public var _traits: Traits = .defaultValue
+ public var _traits: Traits = .variadic
  public var _attributes: Attributes = .defaultValue
+ /// Elements that should update the content result when changed
+ /// This requires a publisher state compatible property wrapper
  public var elements: Elements
  public let result: (Elements.Element) -> SomeContent
- /// the hash value used to compare values
+ /// The hash value used to compare values
  public let keyPath: KeyPath<Elements.Element, AnyHashable>
  public var _contents: [SomeContent] {
   ignoreContent {
    elements.map { element in
-    result(element).traits(\.key, _traits.key)
+    result(element).merge(with: self)
    }
   }
  }
@@ -94,7 +105,7 @@ extension ForEach where Elements.Element: Identifiable {
 // Applies modifiers from the group to the contents of the closure
 public struct Group<Contents: Content>: VariadicContent {
  public var _reflection: Reflection?
- public var _traits: Traits = .defaultValue
+ public var _traits: Traits = .variadic
  public var _attributes: Attributes = .defaultValue
  public let contents: () -> Contents
  public var _contents: [SomeContent] {
@@ -132,4 +143,16 @@ public extension Traits {
 /// so the parser must form the paths so they are less indistiguishable
 extension Hashable {
  var erasedToAny: AnyHashable { AnyHashable(self) }
+}
+
+extension Content {
+ @inlinable func merge(with content: some DynamicContent) -> Self {
+  var copy = self
+  copy._traits.merge(with: content._traits)
+  if var dynamic = copy as? any DynamicContent {
+   dynamic._attributes.merge(with: content._attributes)
+   copy = dynamic as! Self
+  }
+  return copy
+ }
 }

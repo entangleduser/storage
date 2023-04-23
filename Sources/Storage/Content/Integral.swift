@@ -106,6 +106,7 @@ extension Optional: WrappedContent where Wrapped: WrappedContent {
 public protocol EnumeratedContents: DynamicContent {
  associatedtype Value
  var wrappedValue: [Value] { get nonmutating set }
+ var keyPath: KeyPath<Value, AnyHashable>? { get set }
 }
 
 extension Content {

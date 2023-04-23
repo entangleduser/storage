@@ -170,14 +170,20 @@ public extension ContentMirror {
 
   if var reflection = element.value._reflection ?? reflections[element] {
    updateParent(reflection)
-   if var enclosure = element.value as? any EnclosedContent {
-    enclosure.update(reflection)
-    element.value = enclosure
+
+   if let dynamic = element.value as? any DynamicContent,
+      let name = dynamic._attributes.name.wrapped {
+    reflection.name = name
    } else if let identifiable = element.value as? any IdentifiableContent {
     reflection.name = identifiable.id.description
     #if DEBUG
      log("\"\(name)\" has name: \(identifiable.id.description)", for: .mirror)
     #endif
+   }
+
+   if var enclosure = element.value as? any EnclosedContent {
+    enclosure.update(reflection)
+    element.value = enclosure
    } else if var modified = element.value as? any StructureModifier {
     modified.update()
     updateProperty(
@@ -256,6 +262,7 @@ extension ContentMirror {
   _ index: ReflectionIndex,
   _ content: inout SomeContent
  ) {
+  var shouldUpdate = false
   #if DEBUG
    log(
     "⇥ Mirroring properties on \"\(info.mangledName)\"\n",
@@ -279,24 +286,24 @@ extension ContentMirror {
    } else if var property =
     propertyInfo.get(from: content) as? any ReflectedProperty {
     // get detached reflection
-    var reflection = content._reflection ?? reflections[index].unsafelyUnwrapped
+    guard var reflection = content._reflection ?? reflections[index]
+    else { fatalError() }
 
     // assigning the same reflection for all properties
     // public content will not have a reflection but all others can have
+    #if DEBUG
+     log(
+      "⇥ Found property \'\(mangledName)\' on \"\(info.name)\"\n",
+      for: .mirror, with: .property
+     )
+    #endif
     property._reflection = reflection
     property.update()
     propertyInfo.set(value: property, on: &content)
     // apply filtering
     reflection.add(name: mangledName)
 
-    #if DEBUG
-     log(
-      "⇥ Found property \'\(mangledName)\' on \"\(info.name)\"\n",
-      for: .mirror, with: .property
-     )
-     reflection.displayAttributes()
-    #endif
-
+    shouldUpdate = true
    } else { continue }
    /** - remark: swiftui underscored implementation for dynamic properties
     (property as! any DynamicProperty)._propertyBehaviors
@@ -307,6 +314,19 @@ extension ContentMirror {
     fieldOffset: Int,
     inputs: SwiftUI._GraphInputs
     ) */
+  }
+  if shouldUpdate {
+   if content.isStructured {
+    guard let reflection =
+     (content._reflection ?? reflections[index])?.root else {
+     fatalError()
+    }
+    if let root = reflection.root {
+     root.traits.merge(with: reflection.traits)
+     root.traits.contentType = .folder
+     root.updateIfExisting()
+    }
+   }
   }
  }
 }

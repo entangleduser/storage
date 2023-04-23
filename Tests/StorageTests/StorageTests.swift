@@ -87,10 +87,10 @@ struct ContentApp: App {
 struct ContentView: View {
  @EnvironmentObject var content: ContentManager
  var deletedReadMe: Bool { content.static.readme == nil }
- var deletedJSON: Bool { content.static.json?.info == nil }
- var deletedJSON2: Bool { content.static.json2?.info == nil }
- var deletedJSON3: Bool { content.static.json3?.info == nil }
- var deletedJSON4: Bool { content.static.json4?.info == nil }
+ var deletedJSON: Bool { content.static.json == nil }
+ var deletedJSON2: Bool { content.static.json2 == nil }
+ var deletedJSON3: Bool { content.static.json3 == nil }
+ var deletedJSON4: Bool { content.static.json4 == nil }
 
  var body: some View {
   ScrollView {

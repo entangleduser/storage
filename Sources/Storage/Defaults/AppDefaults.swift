@@ -56,10 +56,10 @@
   var defaults: Defaults { .defaultValue }
  }
 
-public protocol DefaultsPublisher: StaticPublisher {
- typealias Defaults = AppDefaults<Self>
- typealias Default<Value> = AppDefaultProperty<Defaults, Value>
-}
+ public protocol DefaultsPublisher: StaticPublisher {
+  typealias Defaults = AppDefaults<Self>
+  typealias Default<Value> = AppDefaultProperty<Defaults, Value>
+ }
 
  public extension View {
   typealias Default<Value> =

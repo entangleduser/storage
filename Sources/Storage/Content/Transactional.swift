@@ -49,22 +49,22 @@ public protocol TransactionalContent: DynamicContent {
    )
   }
   nonmutating set {
-   self.update(newValue.keys)
-   for key in newValue.keys {
-    guard let newValue = newValue[key] else { fatalError() }
-    self[content: key] = newValue
-   }
+   defer { publisher.objectWillChange.send() }
+   self.update(newValue)
   }
  }
 
  @inlinable public subscript(_ element: Element) -> Structure {
   get {
-   append(element)
+   let shouldUpdate = appendUnique(element)
+   defer { if shouldUpdate { updateContents() } }
    return self[content: element]
   }
   nonmutating set {
-   append(element)
+   defer { publisher.objectWillChange.send() }
+   appendUnique(element)
    self[content: element] = newValue
+   updateContents()
   }
  }
 
@@ -77,7 +77,7 @@ public protocol TransactionalContent: DynamicContent {
   }
   nonmutating set {
    folder(for: element)?
-    ._reflection!.index
+    ._reflection!.index // .value = newValue
     .compactMap { value in
      if var projectedValue = value as? Structure {
       projectedValue = newValue
@@ -88,7 +88,7 @@ public protocol TransactionalContent: DynamicContent {
  }
 
  public var projectedValue: Self { self }
- public func update() { publisher.objectWillChange.send() }
+// public func update() { publisher.objectWillChange.send() }
 }
 
 public extension SubscribedProperty {
@@ -102,7 +102,10 @@ public extension SubscribedProperty {
    publisher.reflect(with: keyTransaction, for: Structure.self) {
     Folder(elementName) {
      ForEach(subject, id: keyPath) {
-      Folder($0[keyPath: keyPath]) { Structure.defaultValue }
+      Folder($0[keyPath: keyPath]) {
+       Structure.defaultValue
+       // .attributes(\.name, $0[keyPath: keyPath])
+      }
      }
     }
     /// - Note: Keys support finding and storing unique values with
@@ -129,6 +132,8 @@ public extension SubscribedProperty {
 
  func updateContents() {
   contents = ForEach(subject, id: keyPath) {
+//   Structure.defaultValue
+//    .attributes(\.name, $0[keyPath: keyPath])
    Folder($0[keyPath: keyPath]) { Structure.defaultValue }
   }
   reflection.updateIndex()
@@ -142,7 +147,8 @@ public extension SubscribedProperty {
  func folder(for element: Element) -> (any IdentifiableContent)? {
   folders.first(
    where: {
-    if $0.id.description == element[keyPath: keyPath] {
+    if
+     ($0._reflection?.name ?? $0.id.description) == element[keyPath: keyPath] {
      return true
     }
     return false
@@ -150,21 +156,51 @@ public extension SubscribedProperty {
   )
  }
 
- func append(_ element: Element) {
+ var structures: [Structure] {
+  contents._reflection.unsafelyUnwrapped
+   .index.compactMap { $0 as? Structure }
+ }
+
+ func structure(for element: Element) -> Structure? {
+  structures.first(
+   where: {
+    if $0._attributes.name == element[keyPath: keyPath] {
+     return true
+    }
+    return false
+   }
+  )
+ }
+
+ @discardableResult
+ func appendUnique(_ element: Element) -> Bool {
   let newValue = subject.appendingUnique(element)
   if !newValue.elementsEqual(subject) {
    subject = newValue
-   updateContents()
+   return true
   }
+  return false
  }
 
  /// Recalculates the `ForEach` to reflect new elements
- func update(_ newValue: some Collection<Element>) {
-  let newValue = subject.appendingUnique(newValue.first!)
-  if !newValue.elementsEqual(subject) {
-   subject.append(contentsOf: newValue)
-   updateContents()
+ func update(_ newValue: [Element: Structure]) {
+  var shouldUpdate = false
+  for key in newValue.keys {
+   let structure = newValue[key].unsafelyUnwrapped
+   if subject.contains(key), let index = subject.firstIndex(of: key) {
+    let oldValue = subject[index]
+    if oldValue != key {
+     subject[index] = key
+     self[content: key] = structure
+     shouldUpdate = true
+    }
+   } else {
+    subject.append(key)
+    self[content: key] = structure
+    shouldUpdate = true
+   }
   }
+  if shouldUpdate { updateContents() }
  }
 }
 

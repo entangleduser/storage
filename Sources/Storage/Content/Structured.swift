@@ -3,9 +3,7 @@ import Composite
 // access to the structure
 public protocol EnclosedContent:
 IdentifiableContent, EnumeratedContents, ReflectedProperty {
- var namePath: KeyPath<Value, String>? { get set }
  var defaultValue: Value? { get set }
-
  @discardableResult func encode(_ value: Value) throws -> Data
  func decode(_ data: Data) throws -> Value
  func get() -> Value?
@@ -104,51 +102,88 @@ public extension EnclosedContent {
  /// but there's really no need to observe cached values unless the operation
  /// happens outside of the cache
  func attach(to reflection: Reflection) {
-  var copy = self
-  copy.update(reflection)
-  reflection.structure = copy
+  Task {
+   var copy = self
+   copy.update(reflection)
+   reflection.structure = copy
+  }
  }
 
- var keyValues: [Value] {
+ subscript<A: Identifiable>(value: A) -> Value?
+  where A == Value, A.ID: LosslessStringConvertible {
   get {
-   guard let _reflection else { return .empty }
-   defer { _reflection.structure = nil }
-   attach(to: _reflection)
-   /// lookup preferrably cached values so the returned data is unambiguous
-   return _reflection.getAll(as: Value.self)
+   _reflection.unsafelyUnwrapped.get(id: value.id, on: self)
   }
   nonmutating set {
-   guard let _reflection, let namePath else { return }
-   defer { _reflection.structure = nil }
-   attach(to: _reflection)
+   guard let _reflection else { return }
+   defer { _reflection.updateIndex() }
+   _reflection.set(newValue, id: value.id, on: self)
+  }
+ }
+
+// var dictionary: [AnyHashable: Value?] {
+//  get {
+//   guard let keyPath else { return .empty }
+//   return Dictionary(
+//    uniqueKeysWithValues:
+//     values.map { ($0[keyPath: keyPath], $0) }
+//   )
+//  }
+//  nonmutating set {
+//   guard let _reflection else { return }
+//   defer {
+//    _reflection.structure = nil
+//    _reflection.updateIndex()
+//   }
+//   attach(to: _reflection)
+//   for (key, value) in newValue {
+//     if let value {
+//      _reflection.set(value, id: key)
+//     } else {
+//      _reflection.set(Value?.none, id: key)
+//     }
+//   }
+//  }
+// }
+
+ var values: [Value] {
+  get {
+   guard let _reflection else { return .empty }
+   // defer { _reflection.publisher.objectWillChange.send() }
+   /// lookup preferrably cached values so the returned data is unambiguous
+   return _reflection.getAll(on: self)
+  }
+  nonmutating set {
+   guard let _reflection, let keyPath else { return }
+   defer { _reflection.updateIndex() }
    // cache and compare old values
    // TODO: Resolve ambiguities when appending more than one value
    switch newValue.count {
-    case .zero:
-     let oldValues = _reflection.getAll(as: Value.self)
+   case .zero:
+    let oldValues = _reflection.getAll(on: self)
+    for oldValue in oldValues {
+     let key = oldValue[keyPath: keyPath]
+     _reflection.set(nil, id: key, on: self)
+    }
+   case 1:
+    let value = newValue.first.unsafelyUnwrapped
+    _reflection.set(value, id: value[keyPath: keyPath], on: self)
+   case 2...:
+    let newValues = newValue
+    let oldValues = _reflection.getAll(on: self)
+    if oldValues.count != newValues.count {
      for oldValue in oldValues {
-      let name = oldValue[keyPath: namePath]
-      _reflection.set(Value?.none, id: name)
-     }
-    case 1:
-     let value = newValue.first.unsafelyUnwrapped
-     _reflection.set(value, id: value[keyPath: namePath])
-    case 2...:
-     let newValues = newValue
-     let oldValues = _reflection.getAll(as: Value.self)
-     if oldValues.count != newValues.count {
-      for oldValue in oldValues {
-       let name = oldValue[keyPath: namePath]
-       if !newValue.contains(where: { $0[keyPath: namePath] == name }) {
-        _reflection.set(Value?.none, id: name)
-       }
+      let key = oldValue[keyPath: keyPath]
+      if !newValue.contains(where: { $0[keyPath: keyPath] == key }) {
+       _reflection.set(nil, id: key, on: self)
       }
      }
-     for value in newValue {
-      _reflection.set(value, id: value[keyPath: namePath])
-     }
-    default:
-     fatalError()
+    }
+    for value in newValue {
+     _reflection.set(value, id: value[keyPath: keyPath], on: self)
+    }
+   default:
+    fatalError()
    }
   }
  }
@@ -165,12 +200,17 @@ public struct Structure<Value, Encoder, Decoder>: CodableContent where
  public var _attributes: Attributes = .defaultValue
 
  public var id: String = .empty
- public var namePath: KeyPath<Value, String>?
+ public var keyPath: KeyPath<Value, AnyHashable>?
  public var defaultValue: Value?
 
  public var wrappedValue: [Value] {
-  get { keyValues }
-  nonmutating set { keyValues = newValue }
+  get { values }
+  nonmutating set { values = newValue }
+ }
+
+ public var projectedValue: Self {
+  get { self }
+  set { self = newValue }
  }
 
  public var encoder: Encoder
@@ -183,7 +223,9 @@ public struct Structure<Value, Encoder, Decoder>: CodableContent where
 }
 
 public extension Structure where Encoder == JSONEncoder, Decoder == JSONDecoder {
- init(_ name: (some LosslessStringConvertible)? = nil, default value: Value? = nil) {
+ init(
+  _ name: AnyHashable? = nil, default value: Value? = nil
+ ) {
   self.id = name.description
   self.defaultValue = value
   self.encoder = JSONEncoder()
@@ -201,7 +243,7 @@ public extension Structure
 where Value: Infallible, Encoder == JSONEncoder, Decoder == JSONDecoder {
  /// The property can be set to nil to reflect changes
  init(
-  _ name: (some LosslessStringConvertible)? = nil,
+  _ name: AnyHashable? = nil,
   default value: Value = .defaultValue
  ) {
   self.id = name.description
@@ -220,7 +262,7 @@ public extension Structure where
  ) {
   self.init(String?.none, default: value)
   _traits.utType = type
-  self.namePath = \.id.description
+  self.keyPath = \.id.description.erasedToAny
  }
 }
 
@@ -229,7 +271,7 @@ public extension Structure
  Encoder == Value.AutoEncoder, Decoder == Value.AutoDecoder {
  /// The property can be set to nil to reflect changes
  init(
-  _ name: (some LosslessStringConvertible)? = nil,
+  _ name: AnyHashable? = nil,
   default value: Value? = nil
  ) {
   if let name { self.id = name.description }
@@ -248,7 +290,7 @@ public extension Structure where
  ) {
   self.init(String?.none, default: value)
   _traits.utType = type
-  self.namePath = \.id.description
+  self.keyPath = \.id.description.erasedToAny
  }
 }
 
@@ -264,7 +306,7 @@ public extension Content {
  import XMLCoder
  public extension Structure where Encoder == XMLEncoder, Decoder == XMLDecoder {
   @_disfavoredOverload
-  init(_ name: some LosslessStringConvertible, default value: Value? = nil) {
+  init(_ name: AnyHashable, default value: Value? = nil) {
    self.id = name.description
    self.defaultValue = value
    self.encoder = XMLEncoder()
@@ -287,7 +329,7 @@ public extension Content {
    _ type: UTType = .xml, default value: Value? = nil
   ) {
    self.init(String?.none, default: value)
-   self.namePath = \.id.description
+   self.keyPath = \.id.description.erasedToAny
    _traits.utType = type
   }
  }
@@ -296,7 +338,7 @@ public extension Content {
  where Value: Infallible, Encoder == XMLEncoder, Decoder == XMLDecoder {
   /// The property can be set to nil to reflect changes
   init(
-   _ name: some LosslessStringConvertible, default value: Value = .defaultValue
+   _ name: AnyHashable, default value: Value = .defaultValue
   ) {
    self.id = name.description
    self.defaultValue = value
@@ -326,13 +368,18 @@ public struct NominalStructure<Value: StaticCodable>: EnclosedContent {
  public var _traits: Traits = .observable
  public var _attributes: Attributes = .defaultValue
 
- public var namePath: KeyPath<Value, String>?
+ public var keyPath: KeyPath<Value, AnyHashable>?
  public var id: String = .empty
  public var defaultValue: Value?
 
  public var wrappedValue: [Value] {
-  get { keyValues }
-  nonmutating set { keyValues = newValue }
+  get { values }
+  nonmutating set { values = newValue }
+ }
+
+ public var projectedValue: Self {
+  get { self }
+  set { self = newValue }
  }
 
  public func decode(_ data: Data) throws -> Value { try Value.decode(data) }
@@ -341,14 +388,14 @@ public struct NominalStructure<Value: StaticCodable>: EnclosedContent {
 
 public extension NominalStructure {
  /// The property can be set to nil to reflect changes
- init(_ name: some LosslessStringConvertible, default value: Value? = nil) {
+ init(_ name: AnyHashable, default value: Value? = nil) {
   self.id = name.description
   self.defaultValue = value
  }
 
  /// The property can be set to nil to reflect changes
  init(
-  _ name: some LosslessStringConvertible,
+  _ name: AnyHashable,
   _ type: UTType? = nil, default value: Value? = nil
  ) {
   self.id = name.description
@@ -373,7 +420,7 @@ public protocol StructureModifier: AttributeModifier, DynamicContent
 where Enclosure: EnclosedContent, Value == Enclosure.Value {
  var identifier: UUID { get }
  var enclosure: Enclosure { get set }
- var onError: ((Error) -> ())? { get }
+ var onError: ((Error) -> Void)? { get }
  mutating func update()
 }
 
@@ -399,12 +446,12 @@ where Encoder.Output == Data, Decoder.Input == Data {
  public var _attributes: Attributes = .defaultValue
  public let identifier: UUID
  public var enclosure: Structure<Value, Encoder, Decoder>
- public let onError: ((Error) -> ())?
+ public let onError: ((Error) -> Void)?
 }
 
 public extension Structure {
  func alias(
-  _ alias: Alias<Value?>, onError: ((Error) -> ())? = nil
+  _ alias: Alias<Value?>, onError: ((Error) -> Void)? = nil
  ) -> CodableContentModifier<Value, Encoder, Decoder> {
   CodableContentModifier(
    identifier: alias.identifier, enclosure: self, onError: onError
@@ -419,12 +466,12 @@ public struct NominalContentModifier<Value: StaticCodable>: StructureModifier {
  public var _traits: Traits = .observable
  public var _attributes: Attributes = .defaultValue
  public var enclosure: NominalStructure<Value>
- public let onError: ((Error) -> ())?
+ public let onError: ((Error) -> Void)?
 }
 
 public extension NominalStructure where Value: StaticCodable {
  func alias(
-  _ alias: Alias<Value?>, onError: ((Error) -> ())? = nil
+  _ alias: Alias<Value?>, onError: ((Error) -> Void)? = nil
  ) -> NominalContentModifier<Value> {
   NominalContentModifier(
    identifier: alias.identifier, enclosure: self, onError: onError
@@ -435,7 +482,24 @@ public extension NominalStructure where Value: StaticCodable {
 // MARK: Inlinable Structure
 /// Content intended to reflect the structure of content
 /// This is done with the ``EnumeratedContents`` of a structure
-public protocol StructuredContent: PublicContent {}
+/// TODO: Interpret as folders with wrapped contents
+public protocol StructuredContent: PublicContent // , RecursiveContent
+{}
+
+public extension StructuredContent {
+ var id: String { _attributes.name }
+ var _contents: [SomeContent] {
+  Mirror(reflecting: self).children.compactMap { label, value in
+   guard let label, label.hasPrefix("_"),
+         let value = value as? any EnclosedContent else { return nil }
+   return value
+  }
+ }
+}
+
+extension Content {
+ var isStructured: Bool { self is any StructuredContent }
+}
 
 // MARK: Extensions
 public extension Traits {
